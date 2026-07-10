@@ -7,7 +7,16 @@ $projectDir = $PSScriptRoot
 $outDir = Join-Path $projectDir "bin\Release\netstandard2.0"
 $publishDir = Join-Path $projectDir "Publish"
 
-dotnet build (Join-Path $projectDir "WebconPdfSplitterAction.csproj") -c Release
+# WEBCON cache'uje pluginy po wersji assembly - kazda paczka musi miec nowa wersje,
+# inaczej Designer Studio moze dalej uzywac starej kopii DLL.
+$versionFile = Join-Path $projectDir "version.txt"
+$parts = (Get-Content $versionFile -Raw).Trim().Split(".")
+$parts[-1] = [string]([int]$parts[-1] + 1)
+$version = $parts -join "."
+Set-Content -Path $versionFile -Value $version -Encoding ascii
+Write-Host "Wersja pakietu: $version"
+
+dotnet build (Join-Path $projectDir "WebconPdfSplitterAction.csproj") -c Release -p:Version=$version -p:AssemblyVersion="$version.0"
 if ($LASTEXITCODE -ne 0) { throw "Build failed" }
 
 New-Item -ItemType Directory -Force $publishDir | Out-Null
