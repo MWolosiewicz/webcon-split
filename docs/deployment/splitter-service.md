@@ -41,6 +41,29 @@ curl http://localhost:8000/health    # -> {"status":"ok"}
 - Aktualizacja: `docker compose up -d --build` (przebudowa + podmiana).
 - Logi: `docker logs webcon-pdf-splitter`.
 
+### Topologia deweloperska: Docker na hoście, WEBCON/SQL na VM Hyper-V
+
+Docker Desktop (WSL2) często nie ma trasy do podsieci Hyper-V Default Switch,
+więc kontener nie połączy się z SQL Serverem na VM bezpośrednio. Kontener widzi
+za to hosta (`host.docker.internal`), a host widzi VM — rozwiązaniem jest
+lekki forwarder TCP na hoście:
+
+```powershell
+# okno 1 (zostaw uruchomione):
+cd splitter
+python scripts/sql_proxy.py          # nasłuch 14330 -> 172.19.180.146:1433
+
+# okno 2:
+docker compose up -d                 # kontener czyta .env.docker
+```
+
+`.env.docker` to kopia `.env` z podmienionym adresem serwera SQL na
+`host.docker.internal,14330`. Oba pliki są poza gitem.
+
+Ta topologia jest tylko deweloperska. Docelowo kontener powinien działać na
+serwerze WEBCON (wtedy wystarczy `.env` ze zwykłym adresem SQL i znika też
+problem zmiennej podsieci Default Switch po restarcie hosta).
+
 ## Uruchomienie bez Dockera
 
 ```powershell

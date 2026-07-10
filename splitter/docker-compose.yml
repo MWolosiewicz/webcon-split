@@ -8,9 +8,12 @@ services:
       # port hosta 8010 (8000 zajmuje kontener pdf-processor); w kontenerze serwis slucha na 8000
       - "8010:8000"
     # Zmienne (m.in. SPLITTER_DATABASE_CONNECTION_STRING, SPLITTER_API_TOKEN)
-    # czytane sa z pliku .env obok tego compose - patrz docs/deployment/splitter-service.md
+    # czytane sa z pliku .env.docker - wariant dla kontenera, w ktorym SQL Server
+    # jest osiagany przez proxy na hoscie (scripts/sql_proxy.py), bo Docker Desktop
+    # (WSL2) nie ma trasy do podsieci Hyper-V Default Switch.
+    # Patrz docs/deployment/splitter-service.md
     env_file:
-      - .env
+      - .env.docker
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 30s

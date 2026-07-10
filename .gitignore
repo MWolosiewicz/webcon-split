@@ -11,3 +11,4 @@ bin/
 obj/
 webcon-action/Publish/
 test-data/
+.env.docker
