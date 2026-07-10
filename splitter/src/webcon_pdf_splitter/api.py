@@ -9,7 +9,7 @@ from webcon_pdf_splitter.classification.pipeline import ClassificationPipeline
 from webcon_pdf_splitter.classification.rules import RuleBasedClassifier
 from webcon_pdf_splitter.config import SplitterSettings
 from webcon_pdf_splitter.contracts import SplitResult
-from webcon_pdf_splitter.db.repository import InMemoryPatternRepository
+from webcon_pdf_splitter.db.repository import build_pattern_repository
 from webcon_pdf_splitter.ocr import PdfTextOcrEngine
 from webcon_pdf_splitter.pdf_io import split_pdf, validate_pdf
 
@@ -44,7 +44,7 @@ async def split_pdf_endpoint(
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
 
-    repository = InMemoryPatternRepository(patterns=[])
+    repository = build_pattern_repository(settings)
     pipeline = ClassificationPipeline(
         rule_classifier=RuleBasedClassifier(repository.list_active_patterns()),
         llm_classifier=DisabledLlmClassifier(),

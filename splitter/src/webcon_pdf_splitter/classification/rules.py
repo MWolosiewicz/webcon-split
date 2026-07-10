@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 import re
+import unicodedata
 
 from webcon_pdf_splitter.db.repository import DocumentPattern
 
@@ -70,4 +71,8 @@ class RuleBasedClassifier:
 
     @staticmethod
     def _normalize(value: str) -> str:
-        return re.sub(r"\s+", " ", value.upper()).strip()
+        # OCR output is inconsistent with Polish diacritics, so both the page
+        # text and the patterns are folded to plain ASCII before matching.
+        decomposed = unicodedata.normalize("NFKD", value.replace("ł", "l").replace("Ł", "L"))
+        ascii_only = decomposed.encode("ascii", "ignore").decode("ascii")
+        return re.sub(r"\s+", " ", ascii_only.upper()).strip()

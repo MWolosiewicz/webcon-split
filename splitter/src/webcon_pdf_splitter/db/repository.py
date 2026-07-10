@@ -1,8 +1,11 @@
 from dataclasses import dataclass
 import json
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import pyodbc
+
+if TYPE_CHECKING:
+    from webcon_pdf_splitter.config import SplitterSettings
 
 
 @dataclass(frozen=True)
@@ -26,6 +29,12 @@ class InMemoryPatternRepository:
 
     def list_active_patterns(self) -> list[DocumentPattern]:
         return [pattern for pattern in self._patterns if pattern.active]
+
+
+def build_pattern_repository(settings: "SplitterSettings") -> PatternRepository:
+    if settings.database_connection_string:
+        return SqlServerPatternRepository(settings.database_connection_string)
+    return InMemoryPatternRepository(patterns=[])
 
 
 class SqlServerPatternRepository:

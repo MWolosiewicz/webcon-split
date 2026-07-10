@@ -13,3 +13,14 @@ Minimum permissions:
 Apply schema from:
 
 `splitter/src/webcon_pdf_splitter/db/schema.sql`
+
+Then load the initial HR document types and matching patterns from:
+
+`splitter/src/webcon_pdf_splitter/db/seed.sql`
+
+The seed script is idempotent — existing types and patterns are not duplicated.
+Headers and phrases are stored without Polish diacritics because the classifier
+folds all text to ASCII before matching.
+
+The splitter switches from the empty in-memory pattern list to this database
+as soon as `SPLITTER_DATABASE_CONNECTION_STRING` is set.
