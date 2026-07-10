@@ -20,6 +20,7 @@ public sealed class DetectedDocument
     public int StartPage { get; set; }
     public int EndPage { get; set; }
     public string OutputFileName { get; set; } = "";
+    public string? FileContentBase64 { get; set; }
     public List<string> Signals { get; set; } = new();
     public Dictionary<string, object> Metadata { get; set; } = new();
 }
