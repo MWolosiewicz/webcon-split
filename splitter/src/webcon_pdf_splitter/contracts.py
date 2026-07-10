@@ -19,6 +19,7 @@ class DetectedDocument(BaseModel):
     startPage: int = Field(ge=1)
     endPage: int = Field(ge=1)
     outputFileName: str
+    fileContentBase64: str | None = None
     signals: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
