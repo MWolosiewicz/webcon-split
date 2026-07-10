@@ -1,6 +1,10 @@
 # Splitter Service
 
-Serwis działa jako wewnętrzne HTTP API. Zalecane uruchomienie: Docker.
+Serwis działa jako wewnętrzne HTTP API w kontenerze Docker.
+
+Topologia docelowa: kontener na **dedykowanym serwerze** (nie na serwerze
+WEBCON). Serwer WEBCON komunikuje się ze splitterem po HTTP z tokenem;
+splitter łączy się bezpośrednio z SQL Serverem.
 
 ## Zmienne środowiskowe
 
@@ -20,16 +24,25 @@ Przykładowy connection string (logowanie SQL):
 Driver={ODBC Driver 18 for SQL Server};Server=SERWER_SQL;Database=WebconPdfSplitter;Uid=splitter_svc;Pwd=***;TrustServerCertificate=yes
 ```
 
-## Uruchomienie w Dockerze (zalecane)
+## Wdrożenie docelowe: dedykowany serwer z Dockerem
 
-W katalogu `splitter/` utwórz plik `.env` ze zmiennymi jak wyżej
-(jedna linia = jedna zmienna, bez cudzysłowów), następnie:
+1. Zainstaluj Docker Engine (Linux) lub Docker Desktop (Windows Server).
+2. Skopiuj na serwer katalog `splitter/` (albo sklonuj repozytorium).
+3. W `splitter/` utwórz plik `.env` ze zmiennymi jak wyżej
+   (jedna linia = jedna zmienna, bez cudzysłowów) — connection string
+   wskazuje bezpośrednio serwer SQL.
+4. Uruchom i sprawdź:
 
-```powershell
+```bash
 cd splitter
 docker compose up -d --build
-curl http://localhost:8000/health    # -> {"status":"ok"}
+curl http://localhost:8010/health    # -> {"status":"ok"}
 ```
+
+5. Otwórz na serwerze port 8010 dla ruchu z serwera WEBCON
+   (mapowanie portu zmienisz w `docker-compose.yml`).
+6. W konfiguracji akcji SDK ustaw `http://<adres-serwera>:8010`
+   i ten sam token co `SPLITTER_API_TOKEN`.
 
 - Obraz bazuje na `python:3.12-slim` i zawiera sterownik
   **ODBC Driver 18 for SQL Server** (ten sam identyfikator drivera co na
@@ -57,12 +70,15 @@ python scripts/sql_proxy.py          # nasłuch 14330 -> 172.19.180.146:1433
 docker compose up -d                 # kontener czyta .env.docker
 ```
 
-`.env.docker` to kopia `.env` z podmienionym adresem serwera SQL na
-`host.docker.internal,14330`. Oba pliki są poza gitem.
+Wariant deweloperski włącza się przez `docker-compose.override.yml`
+(compose czyta go automatycznie; plik poza gitem), który podmienia
+`env_file` na `.env.docker` — kopię `.env` z adresem serwera SQL
+`host.docker.internal,14330`.
 
-Ta topologia jest tylko deweloperska. Docelowo kontener powinien działać na
-serwerze WEBCON (wtedy wystarczy `.env` ze zwykłym adresem SQL i znika też
-problem zmiennej podsieci Default Switch po restarcie hosta).
+Ta topologia jest tylko deweloperska — na docelowym dedykowanym serwerze
+kontener łączy się z SQL bezpośrednio (sekcja wyżej), bez proxy i bez
+plików override. Uwaga: podsieć Default Switch zmienia się po restarcie
+hosta — po reboocie sprawdź adresy (`Get-NetIPAddress`).
 
 ## Uruchomienie bez Dockera
 
