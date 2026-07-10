@@ -10,3 +10,4 @@ splitter/work/
 bin/
 obj/
 webcon-action/Publish/
+test-data/

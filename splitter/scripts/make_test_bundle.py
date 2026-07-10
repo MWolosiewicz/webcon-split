@@ -1,7 +1,10 @@
 """Generuje testowa paczke skanow: jeden PDF z kilkoma dokumentami HR.
 
 Uzycie:
-    python scripts/make_test_bundle.py [sciezka_wyjsciowa.pdf]
+    python scripts/make_test_bundle.py [sciezka_wyjsciowa.pdf] [--z-nieznanym]
+
+Wariant --z-nieznanym dodaje dokument spoza bazy wzorcow, zeby przetestowac
+sciezke "wymaga weryfikacji".
 
 Wymaga: pip install fpdf2
 """
@@ -43,11 +46,23 @@ PAGES = [
 ]
 
 
-def main() -> None:
-    output = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("test_bundle.pdf")
+UNKNOWN_PAGES = [
+    (
+        "WNIOSEK O DOFINANSOWANIE OKULAROW",
+        "Zwracam sie z prosba o dofinansowanie zakupu okularow korygujacych "
+        "do pracy przy monitorze ekranowym, zgodnie z zarzadzeniem wewnetrznym.",
+    ),
+]
 
+
+def main() -> None:
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    with_unknown = "--z-nieznanym" in sys.argv
+    output = Path(args[0]) if args else Path("test_bundle.pdf")
+
+    pages = PAGES + (UNKNOWN_PAGES if with_unknown else [])
     pdf = FPDF()
-    for header, body in PAGES:
+    for header, body in pages:
         pdf.add_page()
         pdf.set_font("Helvetica", "B", 16)
         pdf.cell(0, 12, header, new_x="LMARGIN", new_y="NEXT")
@@ -55,7 +70,7 @@ def main() -> None:
         pdf.multi_cell(0, 8, body)
 
     pdf.output(str(output))
-    print(f"Zapisano {output.resolve()} ({len(PAGES)} stron)")
+    print(f"Zapisano {output.resolve()} ({len(pages)} stron)")
 
 
 if __name__ == "__main__":
