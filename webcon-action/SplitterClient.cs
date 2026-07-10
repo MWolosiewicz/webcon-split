@@ -20,7 +20,7 @@ public sealed class SplitterClient
         _apiToken = apiToken;
     }
 
-    public async Task<SplitResult> SplitAsync(string fileName, Stream pdfStream)
+    public async Task<SplitResult> SplitAsync(string fileName, Stream pdfStream, int? webconElementId = null)
     {
         using var content = new MultipartFormDataContent();
         using var fileContent = new StreamContent(pdfStream);
@@ -30,6 +30,8 @@ public sealed class SplitterClient
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/api/split") { Content = content };
         if (!string.IsNullOrEmpty(_apiToken))
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
+        if (webconElementId.HasValue)
+            request.Headers.Add("X-Webcon-Element-Id", webconElementId.Value.ToString());
 
         using var response = await _httpClient.SendAsync(request);
         var body = await response.Content.ReadAsStringAsync();

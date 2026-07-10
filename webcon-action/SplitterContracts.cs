@@ -9,6 +9,7 @@ public sealed class SplitResult
     public string Status { get; set; } = "";
     public List<DetectedDocument> Documents { get; set; } = new();
     public List<string> Warnings { get; set; } = new();
+    public string? JobId { get; set; }
 }
 
 public sealed class DetectedDocument

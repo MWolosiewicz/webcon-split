@@ -25,7 +25,10 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
             using (var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(Configuration.TimeoutSeconds) })
             {
                 var client = new SplitterClient(httpClient, Configuration.SplitterBaseUrl, Configuration.ApiToken);
-                result = await client.SplitAsync(sourceAttachment.FileName, new MemoryStream(pdfContent));
+                result = await client.SplitAsync(
+                    sourceAttachment.FileName,
+                    new MemoryStream(pdfContent),
+                    args.Context.CurrentDocument.ID);
             }
 
             var documentsManager = new DocumentsManager(args.Context);
@@ -54,7 +57,7 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
             }
 
             args.LogMessage =
-                $"Splitter: {result.Status}, pages: {result.PageCount}, " +
+                $"Splitter job {result.JobId}: {result.Status}, pages: {result.PageCount}, " +
                 $"documents: {result.Documents.Count}, created elements: {string.Join(", ", createdIds)}";
         }
         catch (Exception ex)

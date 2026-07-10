@@ -30,3 +30,15 @@ class SplitResult(BaseModel):
     status: SplitStatus
     documents: list[DetectedDocument]
     warnings: list[str] = Field(default_factory=list)
+    jobId: str | None = None
+
+
+class FeedbackRequest(BaseModel):
+    pageNumber: int = Field(ge=1)
+    jobId: str | None = None
+    webconElementId: int | None = None
+    systemDocumentType: str | None = None
+    operatorDocumentType: str | None = None
+    systemIsFirstPage: bool | None = None
+    operatorIsFirstPage: bool | None = None
+    operatorLogin: str | None = None
