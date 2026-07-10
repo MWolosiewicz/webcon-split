@@ -67,7 +67,7 @@ Create deployment docs under `docs/deployment/`:
 - Produces: `SplitRequest`, `SplitResult`, `DetectedDocument`, `SplitterSettings`.
 - Later tasks consume these DTOs in API, pipeline, and WEBCON client tests.
 
-- [ ] **Step 1: Write the contract tests**
+- [x] **Step 1: Write the contract tests**
 
 Create `splitter/tests/test_contracts.py`:
 
@@ -103,7 +103,7 @@ def test_split_result_serializes_required_fields():
     assert payload["documents"][0]["requiresReview"] is False
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -114,7 +114,7 @@ python -m pytest tests/test_contracts.py -v
 
 Expected: FAIL because `webcon_pdf_splitter.contracts` does not exist.
 
-- [ ] **Step 3: Add package configuration**
+- [x] **Step 3: Add package configuration**
 
 Create `splitter/pyproject.toml`:
 
@@ -151,7 +151,7 @@ Create `splitter/src/webcon_pdf_splitter/__init__.py`:
 __all__ = ["contracts", "config"]
 ```
 
-- [ ] **Step 4: Add settings and contracts**
+- [x] **Step 4: Add settings and contracts**
 
 Create `splitter/src/webcon_pdf_splitter/config.py`:
 
@@ -209,7 +209,7 @@ class SplitResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run:
 
@@ -220,7 +220,7 @@ python -m pytest tests/test_contracts.py -v
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 If the workspace has been initialized as a git repo, run:
 
@@ -244,7 +244,7 @@ git commit -m "feat: add splitter contracts"
 - Produces: `DocumentType`, `DocumentPattern`, `InMemoryPatternRepository`, `SqlServerPatternRepository`.
 - Later tasks consume repository method `list_active_patterns() -> list[DocumentPattern]`.
 
-- [ ] **Step 1: Write repository mapping tests**
+- [x] **Step 1: Write repository mapping tests**
 
 Create `splitter/tests/test_repository_mapping.py`:
 
@@ -280,7 +280,7 @@ def test_in_memory_repository_returns_only_active_patterns():
     assert patterns[0].document_type == "Umowa o prace"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -291,7 +291,7 @@ python -m pytest tests/test_repository_mapping.py -v
 
 Expected: FAIL because repository classes do not exist.
 
-- [ ] **Step 3: Add SQL Server schema**
+- [x] **Step 3: Add SQL Server schema**
 
 Create `splitter/src/webcon_pdf_splitter/db/schema.sql`:
 
@@ -346,7 +346,7 @@ CREATE TABLE dbo.classification_feedback (
 );
 ```
 
-- [ ] **Step 4: Add repository boundary**
+- [x] **Step 4: Add repository boundary**
 
 Create `splitter/src/webcon_pdf_splitter/db/__init__.py`:
 
@@ -414,7 +414,7 @@ class SqlServerPatternRepository:
         ]
 ```
 
-- [ ] **Step 5: Run repository tests**
+- [x] **Step 5: Run repository tests**
 
 Run:
 
@@ -425,7 +425,7 @@ python -m pytest tests/test_repository_mapping.py -v
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add splitter/src/webcon_pdf_splitter/db splitter/tests/test_repository_mapping.py
@@ -446,7 +446,7 @@ git commit -m "feat: add sql server pattern repository"
 - Produces: `PageClassification`, `RuleBasedClassifier.classify_page(text: str, page_number: int)`.
 - Later tasks consume `PageClassification.is_first_page`, `document_type`, `confidence`, `signals`.
 
-- [ ] **Step 1: Write classifier tests**
+- [x] **Step 1: Write classifier tests**
 
 Create `splitter/tests/test_rule_classifier.py`:
 
@@ -490,7 +490,7 @@ def test_classifier_marks_unknown_page_as_continuation_with_low_confidence():
     assert result.confidence < 0.70
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -501,7 +501,7 @@ python -m pytest tests/test_rule_classifier.py -v
 
 Expected: FAIL because classifier module does not exist.
 
-- [ ] **Step 3: Implement classifier**
+- [x] **Step 3: Implement classifier**
 
 Create `splitter/src/webcon_pdf_splitter/classification/__init__.py`:
 
@@ -587,7 +587,7 @@ class RuleBasedClassifier:
         return re.sub(r"\s+", " ", value.upper()).strip()
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -598,7 +598,7 @@ python -m pytest tests/test_rule_classifier.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add splitter/src/webcon_pdf_splitter/classification splitter/tests/test_rule_classifier.py
@@ -618,7 +618,7 @@ git commit -m "feat: add rule based document classifier"
 - Produces: `LlmClassification`, `DisabledLlmClassifier`, `OpenAiCompatibleLlmClassifier`.
 - Later tasks consume `classify_uncertain_page(...) -> LlmClassification | None`.
 
-- [ ] **Step 1: Write LLM adapter tests**
+- [x] **Step 1: Write LLM adapter tests**
 
 Create `splitter/tests/test_llm_classifier.py`:
 
@@ -653,7 +653,7 @@ def test_llm_classification_requires_valid_confidence():
     assert result.isFirstPage is True
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -664,7 +664,7 @@ python -m pytest tests/test_llm_classifier.py -v
 
 Expected: FAIL because `classification.llm` does not exist.
 
-- [ ] **Step 3: Implement LLM interface**
+- [x] **Step 3: Implement LLM interface**
 
 Create `splitter/src/webcon_pdf_splitter/classification/llm.py`:
 
@@ -758,7 +758,7 @@ class OpenAiCompatibleLlmClassifier:
         )
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -769,7 +769,7 @@ python -m pytest tests/test_llm_classifier.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add splitter/src/webcon_pdf_splitter/classification/llm.py splitter/tests/test_llm_classifier.py
@@ -788,7 +788,7 @@ git commit -m "feat: add optional local llm classifier"
 - Consumes: `RuleBasedClassifier`, `LlmClassifier`, `SplitResult`, `DetectedDocument`.
 - Produces: `ClassificationPipeline.split_pages(source_file_name: str, page_texts: list[str]) -> SplitResult`.
 
-- [ ] **Step 1: Write pipeline tests**
+- [x] **Step 1: Write pipeline tests**
 
 Create `splitter/tests/test_pipeline.py`:
 
@@ -830,7 +830,7 @@ def test_pipeline_groups_pages_between_detected_first_pages():
     assert result.documents[1].endPage == 4
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -841,7 +841,7 @@ python -m pytest tests/test_pipeline.py -v
 
 Expected: FAIL because pipeline module does not exist.
 
-- [ ] **Step 3: Implement pipeline**
+- [x] **Step 3: Implement pipeline**
 
 Create `splitter/src/webcon_pdf_splitter/classification/pipeline.py`:
 
@@ -947,7 +947,7 @@ class ClassificationPipeline:
         return f"{index:03d}_{safe_type}_strony_{start_page:03d}-{end_page:03d}.pdf"
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -958,7 +958,7 @@ python -m pytest tests/test_pipeline.py -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add splitter/src/webcon_pdf_splitter/classification/pipeline.py splitter/tests/test_pipeline.py
@@ -979,7 +979,7 @@ git commit -m "feat: group classified pages into documents"
 - Consumes: `ClassificationPipeline`.
 - Produces: FastAPI endpoint `POST /api/split` with multipart PDF upload and JSON `SplitResult`.
 
-- [ ] **Step 1: Write API smoke test**
+- [x] **Step 1: Write API smoke test**
 
 Create `splitter/tests/test_api.py`:
 
@@ -998,7 +998,7 @@ def test_health_endpoint_returns_ok():
     assert response.json() == {"status": "ok"}
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -1009,7 +1009,7 @@ python -m pytest tests/test_api.py -v
 
 Expected: FAIL because `api.py` does not exist.
 
-- [ ] **Step 3: Add OCR and PDF boundaries**
+- [x] **Step 3: Add OCR and PDF boundaries**
 
 Create `splitter/src/webcon_pdf_splitter/ocr.py`:
 
@@ -1059,7 +1059,7 @@ def split_pdf(source_path: Path, output_dir: Path, documents: list[DetectedDocum
     return output_paths
 ```
 
-- [ ] **Step 4: Add FastAPI app**
+- [x] **Step 4: Add FastAPI app**
 
 Create `splitter/src/webcon_pdf_splitter/api.py`:
 
@@ -1114,7 +1114,7 @@ async def split_pdf_endpoint(file: UploadFile = File(...)) -> SplitResult:
         return pipeline.split_pages(file.filename, page_texts)
 ```
 
-- [ ] **Step 5: Run API tests**
+- [x] **Step 5: Run API tests**
 
 Run:
 
@@ -1125,7 +1125,7 @@ python -m pytest tests/test_api.py -v
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add splitter/src/webcon_pdf_splitter/api.py splitter/src/webcon_pdf_splitter/ocr.py splitter/src/webcon_pdf_splitter/pdf_io.py splitter/tests/test_api.py
@@ -1146,7 +1146,7 @@ git commit -m "feat: expose splitter api"
 - Consumes: splitter endpoint `POST /api/split`.
 - Produces: C# DTOs and client that the WEBCON SDK action can call.
 
-- [ ] **Step 1: Create C# project**
+- [x] **Step 1: Create C# project**
 
 Create `webcon-action/WebconPdfSplitterAction.csproj`:
 
@@ -1163,7 +1163,7 @@ Create `webcon-action/WebconPdfSplitterAction.csproj`:
 </Project>
 ```
 
-- [ ] **Step 2: Add splitter DTOs**
+- [x] **Step 2: Add splitter DTOs**
 
 Create `webcon-action/SplitterContracts.cs`:
 
@@ -1195,7 +1195,7 @@ public sealed class DetectedDocument
 }
 ```
 
-- [ ] **Step 3: Add splitter HTTP client**
+- [x] **Step 3: Add splitter HTTP client**
 
 Create `webcon-action/SplitterClient.cs`:
 
@@ -1237,7 +1237,7 @@ public sealed class SplitterClient
 }
 ```
 
-- [ ] **Step 4: Add WEBCON action entry scaffold**
+- [x] **Step 4: Add WEBCON action entry scaffold**
 
 Create `webcon-action/SplitPdfAction.cs`:
 
@@ -1264,7 +1264,7 @@ public sealed class SplitPdfAction
 }
 ```
 
-- [ ] **Step 5: Build C# project**
+- [x] **Step 5: Build C# project**
 
 Run:
 
@@ -1274,7 +1274,7 @@ dotnet build webcon-action/WebconPdfSplitterAction.csproj
 
 Expected: build succeeds. If the target WEBCON SDK requires a different target framework, update `TargetFramework` to the version confirmed in the environment.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add webcon-action
@@ -1294,7 +1294,7 @@ git commit -m "feat: add webcon splitter action scaffold"
 - Consumes: SQL schema, API endpoint, WEBCON action scaffold.
 - Produces: deployment checklist for the pilot environment.
 
-- [ ] **Step 1: Add SQL Server deployment notes**
+- [x] **Step 1: Add SQL Server deployment notes**
 
 Create `docs/deployment/sql-server.md`:
 
@@ -1316,7 +1316,7 @@ Apply schema from:
 `splitter/src/webcon_pdf_splitter/db/schema.sql`
 ```
 
-- [ ] **Step 2: Add splitter service notes**
+- [x] **Step 2: Add splitter service notes**
 
 Create `docs/deployment/splitter-service.md`:
 
@@ -1346,7 +1346,7 @@ python -m uvicorn webcon_pdf_splitter.api:app --host 127.0.0.1 --port 8000
 Production should run behind an internal service account and HTTPS or a protected local network channel.
 ```
 
-- [ ] **Step 3: Add WEBCON configuration notes**
+- [x] **Step 3: Add WEBCON configuration notes**
 
 Create `docs/deployment/webcon-configuration.md`:
 
@@ -1380,7 +1380,7 @@ Configure the custom action "Podziel PDF" to:
 5. route low-confidence documents to review.
 ```
 
-- [ ] **Step 4: Verify docs contain no unresolved placeholder markers**
+- [x] **Step 4: Verify docs contain no unresolved placeholder markers**
 
 Run:
 
@@ -1390,7 +1390,7 @@ rg -n ('TB'+'D|TO'+'DO|FIX'+'ME') docs splitter webcon-action
 
 Expected: no matches.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add docs/deployment
