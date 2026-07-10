@@ -18,6 +18,10 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
     {
         try
         {
+            var targetWorkflowId = ParseId(Configuration.TargetWorkflowId, "Target workflow ID");
+            var targetDocTypeId = ParseId(Configuration.TargetDocTypeId, "Target document type ID");
+            var startPathId = ParseId(Configuration.StartPathId, "Start path ID");
+
             var sourceAttachment = await GetSingleSourcePdfAsync(args);
             var pdfContent = await sourceAttachment.GetContentAsync();
 
@@ -37,7 +41,7 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
             foreach (var detected in result.Documents)
             {
                 var newDocument = await documentsManager.GetNewDocumentAsync(
-                    new GetNewDocumentParams(Configuration.TargetWorkflowId, Configuration.TargetDocTypeId)
+                    new GetNewDocumentParams(targetWorkflowId, targetDocTypeId)
                     {
                         ParentDocumentID = args.Context.CurrentDocument.ID,
                     });
@@ -52,7 +56,7 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
                 await newDocument.Comment.AddCommentAsync(FormatDetectionComment(detected));
 
                 var started = await documentsManager.StartNewWorkFlowAsync(
-                    new StartNewWorkFlowParams(newDocument, Configuration.StartPathId));
+                    new StartNewWorkFlowParams(newDocument, startPathId));
                 createdIds.Add(started.CreatedDocumentID);
             }
 
@@ -84,6 +88,15 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
             throw new InvalidOperationException("The scan bundle has more than one PDF attachment; source file is ambiguous.");
 
         return pdfs[0];
+    }
+
+    private static int ParseId(string configuredValue, string fieldName)
+    {
+        if (int.TryParse(configuredValue?.Trim(), out var id) && id > 0)
+            return id;
+
+        throw new InvalidOperationException(
+            $"Configuration field '{fieldName}' must evaluate to a positive integer, got: '{configuredValue}'.");
     }
 
     private static string FormatDetectionComment(DetectedDocument detected) =>

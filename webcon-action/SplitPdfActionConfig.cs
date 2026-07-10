@@ -8,9 +8,11 @@ public class SplitPdfActionConfig : PluginConfiguration
     [ConfigEditableText(
         DisplayName = "Splitter base URL",
         Description = "Adres lokalnego serwisu PDF Splitter, np. http://localhost:8000 lub http://serwer:8000. " +
-                      "Serwis musi byc osiagalny z serwera WEBCON BPS (WorkflowService), nie z przegladarki.",
+                      "Serwis musi byc osiagalny z serwera WEBCON BPS (WorkflowService), nie z przegladarki. " +
+                      "Mozna przeciagnac stala globalna z panelu po prawej.",
         DefaultText = "http://localhost:8000",
         IsRequired = true,
+        TagEvaluationMode = EvaluationMode.Default,
         Order = 1)]
     public string SplitterBaseUrl { get; set; } = "http://localhost:8000";
 
@@ -18,37 +20,43 @@ public class SplitPdfActionConfig : PluginConfiguration
         DisplayName = "Splitter API token",
         Description = "Token uwierzytelniajacy wysylany jako naglowek 'Authorization: Bearer ...'. " +
                       "Musi byc identyczny z SPLITTER_API_TOKEN w konfiguracji serwisu. " +
+                      "Mozna przeciagnac stala globalna z panelu po prawej. " +
                       "Zostaw puste tylko, jesli serwis dziala bez tokenu (niezalecane).",
         IsPasswordField = true,
+        TagEvaluationMode = EvaluationMode.Default,
         Order = 2)]
     public string ApiToken { get; set; } = "";
 
-    [ConfigEditableInteger(
+    [ConfigEditableText(
         DisplayName = "Target workflow ID (HR document)",
         Description = "ID obiegu, w ktorym maja powstawac elementy dokumentow HR. " +
-                      "Znajdziesz je w Designer Studio we wlasciwosciach obiegu (pole ID).",
+                      "Wpisz liczbe albo przeciagnij tag/stala z panelu po prawej " +
+                      "(wartosc po podstawieniu musi byc liczba calkowita). " +
+                      "ID znajdziesz w Designer Studio we wlasciwosciach obiegu.",
         IsRequired = true,
-        MinValue = 1,
+        TagEvaluationMode = EvaluationMode.Default,
         Order = 3)]
-    public int TargetWorkflowId { get; set; }
+    public string TargetWorkflowId { get; set; } = "";
 
-    [ConfigEditableInteger(
+    [ConfigEditableText(
         DisplayName = "Target document type ID (HR document)",
         Description = "ID typu formularza (typu dokumentu) dla elementow dokumentow HR. " +
-                      "Znajdziesz je w Designer Studio we wlasciwosciach typu formularza.",
+                      "Wpisz liczbe albo przeciagnij tag/stala z panelu po prawej. " +
+                      "ID znajdziesz w Designer Studio we wlasciwosciach typu formularza.",
         IsRequired = true,
-        MinValue = 1,
+        TagEvaluationMode = EvaluationMode.Default,
         Order = 4)]
-    public int TargetDocTypeId { get; set; }
+    public string TargetDocTypeId { get; set; } = "";
 
-    [ConfigEditableInteger(
+    [ConfigEditableText(
         DisplayName = "Start path ID (HR document workflow)",
         Description = "ID sciezki przejscia, ktora nowy element dokumentu HR ma wystartowac " +
-                      "(sciezka wychodzaca z kroku startowego obiegu docelowego).",
+                      "(sciezka wychodzaca z kroku startowego obiegu docelowego). " +
+                      "Wpisz liczbe albo przeciagnij tag/stala z panelu po prawej.",
         IsRequired = true,
-        MinValue = 1,
+        TagEvaluationMode = EvaluationMode.Default,
         Order = 5)]
-    public int StartPathId { get; set; }
+    public string StartPathId { get; set; } = "";
 
     [ConfigEditableInteger(
         DisplayName = "Timeout in seconds",
