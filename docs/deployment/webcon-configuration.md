@@ -1,51 +1,84 @@
 # WEBCON Configuration
 
-Target environment: WEBCON BPS 2026.1.
+Środowisko docelowe: WEBCON BPS 2026.1.
 
-## SDK plugin
+## Plugin SDK
 
-The custom action is built against `WEBCON.BPS.2026.SDK.Libraries` (26.1.6.209),
-targeting .NET Standard 2.0. The entry point is
+Akcja jest zbudowana na `WEBCON.BPS.2026.SDK.Libraries` (26.1.6.209),
+target .NET Standard 2.0, zestaw podpisany strong name
+(`PublicKeyToken=f058138f2a0511b3`). Punkt wejścia:
 `WebconPdfSplitterAction.SplitPdfAction : CustomAction<SplitPdfActionConfig>`.
 
-Action configuration fields (set in Designer Studio):
+### Budowanie i rejestracja paczki
 
-- Splitter base URL (e.g. `http://localhost:8000`);
-- Splitter API token (sent as `Authorization: Bearer`, must match `SPLITTER_API_TOKEN`);
-- Target workflow ID and document type ID for created HR document elements;
-- Start path ID for the HR document workflow;
-- Timeout in seconds (default 300).
+1. `powershell -File webcon-action\package.ps1` — wynik:
+   `webcon-action\Publish\WebconPdfSplitterAction.zip`
+   (DLL pluginu + Newtonsoft.Json.dll + manifest; bibliotek WEBCON SDK
+   celowo brak — dostarcza je host BPS).
+2. Designer Studio → **Plugin packages** → **New package** → wskaż ZIP.
+3. Kliknij **Verify plugins** — po pozytywnej weryfikacji akcja jest dostępna.
+4. Wymagana licencja SDK.
 
-Deployment steps:
+## Konfiguracja akcji "SplitPdfAction"
 
-1. build `webcon-action/WebconPdfSplitterAction.csproj`;
-2. sign the assembly with an SNK key and package it with a plugin manifest
-   (GUID, assembly name, class reference) using WEBCON BPS SDK Tools;
-3. register the package in Designer Studio;
-4. add the custom action "Podziel PDF" on the scan bundle workflow path.
+Każde pole ma opis widoczny w Designer Studio; poniżej pełna ściąga.
 
-Create a process for scan bundles with:
+| Pole | Wymagane | Opis | Skąd wziąć wartość |
+|---|---|---|---|
+| Splitter base URL | tak | Adres serwisu splittera, np. `http://serwer:8000` | Adres hosta/kontenera ze splitterem. Musi być osiągalny **z serwera WEBCON** (WorkflowService), nie z przeglądarki użytkownika |
+| Splitter API token | zalecane | Wysyłany jako `Authorization: Bearer ...` | Ta sama wartość co `SPLITTER_API_TOKEN` w konfiguracji serwisu |
+| Target workflow ID | tak | Obieg, w którym powstają elementy Dokument HR | Designer Studio → obieg docelowy → właściwości → ID (włącz "Pokaż identyfikatory obiektów", jeśli niewidoczne) |
+| Target document type ID | tak | Typ formularza elementów Dokument HR | Designer Studio → typ formularza → właściwości → ID |
+| Start path ID | tak | Ścieżka startowa obiegu Dokument HR (przejście z kroku startowego) | Designer Studio → krok startowy obiegu docelowego → ścieżka → właściwości → ID |
+| Timeout in seconds | nie (300) | Maksymalny czas oczekiwania na splitter | Zwiększ dla dużych paczek z OCR |
 
-- original PDF attachment;
-- processing status;
-- page count;
-- detected document count;
-- technical log reference;
-- relation to created HR document elements.
+## Procesy
 
-Create a process for HR documents with:
+### Proces "Paczka skanu"
 
-- single split PDF attachment;
-- document type;
-- source page range;
-- confidence;
-- review status;
-- source scan bundle reference.
+Atrybuty minimalne:
 
-Configure the custom action "Podziel PDF" to:
+- oryginalny PDF jako załącznik (dokładnie jeden — więcej niż jeden PDF
+  powoduje błąd akcji o niejednoznacznym pliku źródłowym);
+- status przetwarzania (`Nowa paczka`, `W trakcie analizy`,
+  `Podzielona automatycznie`, `Wymaga weryfikacji`, `Zakończona`, `Błąd przetwarzania`);
+- liczba stron, liczba wykrytych dokumentów;
+- odniesienie do logu technicznego (akcja loguje `jobId` splittera —
+  koreluje z tabelą `dbo.splitter_job` w bazie `WebconPdfSplitter`).
 
-1. read the selected bundle PDF;
-2. call the local splitter service;
-3. create HR document elements;
-4. attach split PDFs;
-5. route low-confidence documents to review.
+Akcję "SplitPdfAction" podpinamy na ścieżce przejścia (np. "Podziel PDF")
+na kroku, w którym paczka ma komplet załączników.
+
+### Proces "Dokument HR"
+
+Elementy tworzone przez akcję dostają:
+
+- jeden wynikowy PDF jako załącznik;
+- komentarz `Type: <typ>; pages <od>-<do>; confidence <0.00-1.00>; requires review: <true/false>`;
+- relację do paczki źródłowej (`ParentDocumentID`).
+
+Atrybuty warto odwzorować z komentarza w polach formularza (typ dokumentu,
+zakres stron, pewność, status weryfikacji) — w kolejnej iteracji akcja może
+wypełniać pola bezpośrednio po podaniu ich ID.
+
+## Obsługa błędów
+
+Akcja rozróżnia i raportuje (użytkownik widzi komunikat biznesowy,
+administrator pełny stack w logu):
+
+- brak załącznika PDF na paczce;
+- więcej niż jeden PDF (niejednoznaczny plik źródłowy);
+- PDF zaszyfrowany/uszkodzony (HTTP 400 od splittera);
+- zły token (HTTP 401);
+- niedostępność serwisu / timeout.
+
+Oryginalny PDF nigdy nie jest modyfikowany ani usuwany.
+
+## Feedback operatora
+
+Po korekcie operatora (zmiana typu / granic) formularz lub akcja techniczna
+powinna wywołać `POST /api/feedback` splittera z kompletem pól:
+`jobId`, `webconElementId`, `pageNumber`, `systemDocumentType`,
+`operatorDocumentType`, `systemIsFirstPage`, `operatorIsFirstPage`,
+`operatorLogin`. Wpisy trafiają do `dbo.classification_feedback` i będą
+podstawą aktualizacji wzorców.

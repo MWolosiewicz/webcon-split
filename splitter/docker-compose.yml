@@ -1,0 +1,17 @@
+services:
+  splitter:
+    build: .
+    image: webcon-pdf-splitter:latest
+    container_name: webcon-pdf-splitter
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    # Zmienne (m.in. SPLITTER_DATABASE_CONNECTION_STRING, SPLITTER_API_TOKEN)
+    # czytane sa z pliku .env obok tego compose - patrz docs/deployment/splitter-service.md
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

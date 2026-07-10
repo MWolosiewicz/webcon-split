@@ -1,0 +1,11 @@
+.python_packages/
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/
+scripts/
+work/
+.env
+.env.*
+Dockerfile
+docker-compose.yml
