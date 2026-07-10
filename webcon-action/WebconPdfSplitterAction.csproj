@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>WebconPdfSplitterAction.snk</AssemblyOriginatorKeyFile>
+    <!-- copy NuGet dependencies (Newtonsoft.Json) to output so the plugin package is self-contained -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="WEBCON.BPS.2026.SDK.Libraries" Version="26.1.6.209" />

@@ -1,0 +1,16 @@
+{
+  "extensions": [
+    {
+      "guid": "5a984326-8f99-464a-b6ae-fb673055938c",
+      "name": "SplitPdfAction",
+      "description": "Dzieli zbiorczy PDF paczki skanu na osobne dokumenty HR przez lokalny serwis PDF Splitter i tworzy elementy potomne.",
+      "assembly": "WebconPdfSplitterAction",
+      "class": "WebconPdfSplitterAction.SplitPdfAction",
+      "type": "CustomAction"
+    }
+  ],
+  "dependencies": [
+    "WebconPdfSplitterAction",
+    "Newtonsoft.Json"
+  ]
+}

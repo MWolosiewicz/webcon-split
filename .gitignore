@@ -9,3 +9,4 @@ splitter/work/
 .env
 bin/
 obj/
+webcon-action/Publish/
