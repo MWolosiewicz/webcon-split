@@ -15,7 +15,8 @@ splitter łączy się bezpośrednio z SQL Serverem.
 | `SPLITTER_WORK_DIR` | nie | Katalog roboczy plików tymczasowych (w kontenerze: `/app/work`) |
 | `SPLITTER_MIN_AUTO_ACCEPT_CONFIDENCE` | nie (0.90) | Próg automatycznej akceptacji |
 | `SPLITTER_MIN_REVIEW_CONFIDENCE` | nie (0.70) | Próg kierowania do weryfikacji |
-| `SPLITTER_LLM_ENABLED` | nie (false) | Włącza fallback LLM (wymaga endpointu) |
+| `SPLITTER_LLM_ENABLED` | nie (false) | Włącza fallback LLM dla stron nierozpoznanych (wymaga endpointu i modelu) |
+| `SPLITTER_LLM_TIMEOUT_SECONDS` | nie (30) | Limit czasu pojedynczego wywołania LLM |
 | `SPLITTER_LLM_ENDPOINT`, `SPLITTER_LLM_MODEL` | nie | Lokalny endpoint zgodny z OpenAI Chat Completions (Ollama/vLLM) |
 
 Wzorce rozpoznawania przychodzą w żądaniu z akcji WEBCON (pole `patterns`);
@@ -106,3 +107,31 @@ procesu ma pierwszeństwo przed plikiem).
 - logi nie zawierają treści dokumentów HR — tylko metadane i statusy;
 - retencja plików tymczasowych: katalog roboczy jest czyszczony po każdym
   zadaniu (`TemporaryDirectory`).
+
+## Lokalny LLM (opcjonalny)
+
+Fallback LLM pomaga klasyfikować wyłącznie strony, których nie rozpoznały
+reguły i powinowactwo fraz — wielostronicowe dokumenty ze znanymi frazami
+nie generują żadnych wywołań. Bez LLM strony nierozpoznane trafiają jako
+osobne dokumenty "Nieznany typ dokumentu" do ręcznej weryfikacji.
+
+Wymagany jest lokalny serwer zgodny z OpenAI Chat Completions — splitter go
+nie uruchamia. Przykład (Ollama jako kontener na tym samym hoście):
+
+```bash
+docker run -d --name ollama -p 11434:11434 ollama/ollama
+docker exec ollama ollama pull llama3.1:8b
+```
+
+Konfiguracja w `.env` splittera:
+
+```
+SPLITTER_LLM_ENABLED=true
+SPLITTER_LLM_ENDPOINT=http://host.docker.internal:11434/v1
+SPLITTER_LLM_MODEL=llama3.1:8b
+SPLITTER_LLM_TIMEOUT_SECONDS=60
+```
+
+Dane stron nie opuszczają infrastruktury — żądania idą tylko do wskazanego
+lokalnego endpointu. Błąd lub timeout LLM nie przerywa podziału: strona
+pozostaje "Nieznany typ dokumentu".
