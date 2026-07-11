@@ -9,6 +9,12 @@ if TYPE_CHECKING:
     from webcon_pdf_splitter.config import SplitterSettings
 
 
+def split_phrases(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [phrase.strip() for phrase in value.split(";") if phrase.strip()]
+
+
 @dataclass(frozen=True)
 class DocumentPattern:
     document_type: str
