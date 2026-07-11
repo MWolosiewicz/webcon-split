@@ -1,4 +1,5 @@
 import base64
+import logging
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import uuid4
@@ -28,11 +29,23 @@ from webcon_pdf_splitter.ocr import PdfTextOcrEngine
 from webcon_pdf_splitter.pdf_io import split_pdf, validate_pdf
 
 
-app = FastAPI(title="WEBCON PDF Splitter")
-
-
 def get_settings() -> SplitterSettings:
     return SplitterSettings()
+
+
+def configure_logging(settings: SplitterSettings) -> None:
+    # uvicorn configures only its own loggers; without this, application
+    # logger.info(...) calls never reach docker logs.
+    logging.basicConfig(
+        level=settings.log_level.upper(),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        force=True,
+    )
+
+
+configure_logging(get_settings())
+
+app = FastAPI(title="WEBCON PDF Splitter")
 
 
 def _require_token(settings: SplitterSettings, authorization: str | None) -> None:

@@ -14,3 +14,4 @@ class SplitterSettings(BaseSettings):
     llm_model: str = Field(default="")
     llm_timeout_seconds: int = Field(default=30)
     api_token: str = Field(default="")
+    log_level: str = Field(default="INFO")
