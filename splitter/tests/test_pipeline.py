@@ -64,7 +64,7 @@ def _assert_full_coverage(result, page_count):
     assert expected_start == page_count + 1
 
 
-def test_unknown_run_in_the_middle_becomes_separate_document():
+def test_unmatched_middle_page_is_glued_and_flagged_without_llm():
     result = _make_pipeline().split_pages(
         "scan.pdf",
         [
@@ -76,15 +76,16 @@ def test_unknown_run_in_the_middle_becomes_separate_document():
     )
 
     assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
-        ("Umowa o prace", 1, 2),
-        ("Nieznany typ dokumentu", 3, 3),
+        ("Umowa o prace", 1, 3),
         ("Swiadectwo pracy", 4, 4),
     ]
-    unknown = result.documents[1]
-    assert unknown.requiresReview is True
-    assert unknown.confidence == 0.20
-    assert "unknown_run" in unknown.signals
-    assert result.warnings == ["Strony 3-3: nierozpoznany dokument"]
+    umowa = result.documents[0]
+    assert umowa.requiresReview is True
+    assert "glued_unknown_page:3" in umowa.signals
+    assert result.warnings == [
+        "Strona 3: brak dopasowania - doklejona do dokumentu 'Umowa o prace', wymagana weryfikacja"
+    ]
+    assert result.status == "requires_review"
     _assert_full_coverage(result, 4)
 
 
@@ -105,7 +106,7 @@ def test_unknown_pages_at_start_are_not_lost():
     _assert_full_coverage(result, 3)
 
 
-def test_unknown_tail_becomes_separate_document():
+def test_unmatched_tail_is_glued_and_flagged_without_llm():
     result = _make_pipeline().split_pages(
         "scan.pdf",
         [
@@ -115,13 +116,14 @@ def test_unknown_tail_becomes_separate_document():
     )
 
     assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
-        ("Umowa o prace", 1, 1),
-        ("Nieznany typ dokumentu", 2, 2),
+        ("Umowa o prace", 1, 2),
     ]
+    assert result.documents[0].requiresReview is True
+    assert "glued_unknown_page:2" in result.documents[0].signals
     _assert_full_coverage(result, 2)
 
 
-def test_page_with_foreign_type_phrases_goes_to_unknown_run():
+def test_page_with_foreign_type_phrases_is_glued_and_flagged():
     result = _make_pipeline().split_pages(
         "scan.pdf",
         [
@@ -131,9 +133,9 @@ def test_page_with_foreign_type_phrases_goes_to_unknown_run():
     )
 
     assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
-        ("Umowa o prace", 1, 1),
-        ("Nieznany typ dokumentu", 2, 2),
+        ("Umowa o prace", 1, 2),
     ]
+    assert result.documents[0].requiresReview is True
 
 
 def test_fully_unknown_bundle_is_single_unknown_document():
@@ -206,7 +208,7 @@ def test_llm_confirms_continuation_of_current_document():
     ]
 
 
-def test_llm_error_leaves_page_unknown():
+def test_llm_error_glues_page_with_forced_review():
     stub = _StubLlm(error=RuntimeError("llm down"))
     result = _make_pipeline(llm_classifier=stub).split_pages(
         "scan.pdf",
@@ -214,12 +216,12 @@ def test_llm_error_leaves_page_unknown():
     )
 
     assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
-        ("Umowa o prace", 1, 1),
-        ("Nieznany typ dokumentu", 2, 2),
+        ("Umowa o prace", 1, 2),
     ]
+    assert result.documents[0].requiresReview is True
 
 
-def test_llm_low_confidence_leaves_page_unknown():
+def test_llm_low_confidence_glues_page_with_forced_review():
     stub = _StubLlm(
         responses={
             "strona bez zadnych fraz": LlmClassification(
@@ -235,7 +237,10 @@ def test_llm_low_confidence_leaves_page_unknown():
         ["UMOWA O PRACE zawarta z pracodawca", "strona bez zadnych fraz"],
     )
 
-    assert result.documents[1].documentType == "Nieznany typ dokumentu"
+    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
+        ("Umowa o prace", 1, 2),
+    ]
+    assert result.documents[0].requiresReview is True
 
 
 def test_llm_not_called_for_affine_continuation_pages():

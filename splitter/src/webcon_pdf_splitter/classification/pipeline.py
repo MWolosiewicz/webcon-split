@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 
 from webcon_pdf_splitter.classification.llm import LlmClassification, LlmClassifier
@@ -18,6 +18,8 @@ class _Segment:
     start_page: int
     end_page: int
     known: bool
+    forced_review: bool = False
+    glued_pages: list[int] = field(default_factory=list)
 
 
 class ClassificationPipeline:
@@ -75,7 +77,12 @@ class ClassificationPipeline:
                     current.end_page = page_number
                     continue
 
-            if current is not None and not current.known:
+            if current is not None and current.known:
+                current.end_page = page_number
+                current.forced_review = True
+                current.glued_pages.append(page_number)
+                current.signals.append(f"glued_unknown_page:{page_number}")
+            elif current is not None and not current.known:
                 current.end_page = page_number
             else:
                 current = _Segment(
@@ -93,7 +100,8 @@ class ClassificationPipeline:
                 documentIndex=document_index,
                 documentType=segment.document_type,
                 confidence=segment.confidence,
-                requiresReview=segment.confidence < self._min_auto_accept_confidence,
+                requiresReview=segment.forced_review
+                or segment.confidence < self._min_auto_accept_confidence,
                 startPage=segment.start_page,
                 endPage=segment.end_page,
                 outputFileName=self._file_name(
@@ -104,11 +112,17 @@ class ClassificationPipeline:
             )
             for document_index, segment in enumerate(segments, start=1)
         ]
-        warnings = [
-            f"Strony {segment.start_page}-{segment.end_page}: nierozpoznany dokument"
-            for segment in segments
-            if not segment.known
-        ]
+        warnings: list[str] = []
+        for segment in segments:
+            if not segment.known:
+                warnings.append(
+                    f"Strony {segment.start_page}-{segment.end_page}: nierozpoznany dokument"
+                )
+            for page in segment.glued_pages:
+                warnings.append(
+                    f"Strona {page}: brak dopasowania - doklejona do dokumentu "
+                    f"'{segment.document_type}', wymagana weryfikacja"
+                )
 
         status = "requires_review" if any(document.requiresReview for document in documents) else "completed"
         return SplitResult(
