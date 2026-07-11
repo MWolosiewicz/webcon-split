@@ -36,7 +36,9 @@ def test_split_returns_documents_with_file_content():
 
 
 def test_split_rejects_missing_token_when_token_configured(monkeypatch):
-    monkeypatch.setattr(api, "get_settings", lambda: SplitterSettings(api_token="sekret"))
+    monkeypatch.setattr(
+        api, "get_settings", lambda: SplitterSettings(_env_file=None, api_token="sekret")
+    )
     client = TestClient(app)
 
     response = client.post(
@@ -48,7 +50,9 @@ def test_split_rejects_missing_token_when_token_configured(monkeypatch):
 
 
 def test_split_accepts_valid_token(monkeypatch):
-    monkeypatch.setattr(api, "get_settings", lambda: SplitterSettings(api_token="sekret"))
+    monkeypatch.setattr(
+        api, "get_settings", lambda: SplitterSettings(_env_file=None, api_token="sekret")
+    )
     client = TestClient(app)
 
     response = client.post(
