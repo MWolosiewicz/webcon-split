@@ -29,8 +29,12 @@ Copy-Item (Join-Path $outDir "WebconPdfSplitterAction.dll") $staging
 Copy-Item (Join-Path $outDir "Newtonsoft.Json.dll") $staging
 Copy-Item (Join-Path $projectDir "WebconPdfSplitterAction.json") $staging
 
-$zipPath = Join-Path $publishDir "WebconPdfSplitterAction.zip"
+# nazwa ZIP-a zawiera wersje, zeby bylo widac, ktora paczka jest ktora
+$zipPath = Join-Path $publishDir "WebconPdfSplitterAction-$version.zip"
 if (Test-Path $zipPath) { Remove-Item -Force $zipPath }
+# stara paczka bez wersji w nazwie mylila - usun, jesli jeszcze lezy
+$legacyZip = Join-Path $publishDir "WebconPdfSplitterAction.zip"
+if (Test-Path $legacyZip) { Remove-Item -Force $legacyZip }
 Compress-Archive -Path (Join-Path $staging "*") -DestinationPath $zipPath
 Remove-Item -Recurse -Force $staging
 

@@ -12,9 +12,10 @@ target .NET Standard 2.0, zestaw podpisany strong name
 ### Budowanie i rejestracja paczki
 
 1. `powershell -File webcon-action\package.ps1` — wynik:
-   `webcon-action\Publish\WebconPdfSplitterAction.zip`
+   `webcon-action\Publish\WebconPdfSplitterAction-<wersja>.zip`
    (DLL pluginu + Newtonsoft.Json.dll + manifest; bibliotek WEBCON SDK
-   celowo brak — dostarcza je host BPS).
+   celowo brak — dostarcza je host BPS). Skrypt sam podbija wersję w
+   `version.txt`; wersja jest też w logu operacji akcji (`SplitPdfAction vX.Y.Z`).
 2. Designer Studio → **Plugin packages** → **New package** → wskaż ZIP.
 3. Kliknij **Verify plugins** — po pozytywnej weryfikacji akcja jest dostępna.
 4. Wymagana licencja SDK.

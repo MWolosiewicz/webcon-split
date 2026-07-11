@@ -20,6 +20,9 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
 {
     public override async Task RunAsync(RunCustomActionParams args)
     {
+        // wersja paczki pluginu w logu operacji - pozwala od razu widziec,
+        // ktora wersja dodatku faktycznie wykonala akcje
+        var pluginVersion = typeof(SplitPdfAction).Assembly.GetName().Version?.ToString(3) ?? "?";
         try
         {
             var targetWorkflowId = ParseId(Configuration.TargetWorkflowId, "Target workflow ID");
@@ -80,6 +83,7 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
             }
 
             args.LogMessage =
+                $"SplitPdfAction v{pluginVersion}. " +
                 patternsWarning +
                 $"Splitter job {result.JobId}: {result.Status}, pages: {result.PageCount}, " +
                 $"documents: {result.Documents.Count}, created elements: {string.Join(", ", createdIds)}";
@@ -88,7 +92,7 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
         {
             args.HasErrors = true;
             args.Message = "PDF split failed. Check the technical log for details.";
-            args.LogMessage = ex.ToString();
+            args.LogMessage = $"SplitPdfAction v{pluginVersion}. {ex}";
         }
     }
 

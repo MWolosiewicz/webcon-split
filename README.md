@@ -58,7 +58,7 @@ python -m uvicorn webcon_pdf_splitter.api:app --host 127.0.0.1 --port 8000
 
 ```powershell
 powershell -File webcon-action\package.ps1
-# wynik: webcon-action\Publish\WebconPdfSplitterAction.zip
+# wynik: webcon-action\Publish\WebconPdfSplitterAction-<wersja>.zip
 ```
 
 ZIP rejestruje się w Designer Studio (Plugin packages → New package → Verify plugins).
