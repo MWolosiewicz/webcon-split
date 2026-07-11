@@ -77,6 +77,9 @@ dokument z frazami na kolejnych stronach nie generuje zadnych wywolan LLM.
   niepuste `llm_endpoint` i `llm_model` -> `OpenAiCompatibleLlmClassifier`;
   inaczej `DisabledLlmClassifier`. Bez LLM cala reszta projektu dziala
   (strony nieznane ida do serii nieznanych).
+- Nowe ustawienie `llm_timeout_seconds` (`SPLITTER_LLM_TIMEOUT_SECONDS`,
+  domyslnie 30) przekazywane do konstruktora `OpenAiCompatibleLlmClassifier`
+  (parametr `timeout_seconds` juz istnieje).
 - Pipeline przekazuje LLM-owi rzeczywista liste znanych typow (unikalne
   `document_type` z aktywnych wzorcow).
 - Werdykt LLM dla strony nieznanej:
@@ -106,7 +109,13 @@ dokument z frazami na kolejnych stronach nie generuje zadnych wywolan LLM.
   doklejanie"; wywolania LLM tylko dla stron nieznanych; przekazywanie listy
   znanych typow; warnings per seria nieznana.
 - `splitter/src/webcon_pdf_splitter/api.py`: wybor klasyfikatora LLM wg
-  ustawien (`llm_enabled`, `llm_endpoint`, `llm_model`).
+  ustawien (`llm_enabled`, `llm_endpoint`, `llm_model`,
+  `llm_timeout_seconds`).
+- `splitter/src/webcon_pdf_splitter/config.py`: nowe pole
+  `llm_timeout_seconds: int = 30`.
+- `docs/deployment/splitter-service.md`: wiersz `SPLITTER_LLM_TIMEOUT_SECONDS`
+  w tabeli zmiennych oraz krotka sekcja o wymaganym lokalnym serwerze LLM
+  (Ollama/vLLM jako osobny kontener/proces; przyklad endpointu).
 - Kontrakty, plugin SDK, baza danych - bez zmian. Elementy "Nieznany typ
   dokumentu" przychodza do WEBCON-a istniejaca sciezka z komentarzem
   `requires review: true`.
