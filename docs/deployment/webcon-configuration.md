@@ -30,6 +30,7 @@ Każde pole ma opis widoczny w Designer Studio; poniżej pełna ściąga.
 | Target workflow ID | tak | Obieg, w którym powstają elementy Dokument HR | Designer Studio → obieg docelowy → właściwości → ID (włącz "Pokaż identyfikatory obiektów", jeśli niewidoczne) |
 | Target document type ID | tak | Typ formularza elementów Dokument HR | Designer Studio → typ formularza → właściwości → ID |
 | Start path ID | tak | Ścieżka startowa obiegu Dokument HR (przejście z kroku startowego) | Designer Studio → krok startowy obiegu docelowego → ścieżka → właściwości → ID |
+| Patterns data source ID | tak | Źródło danych zwracające aktywne wzorce (kolumny: DocumentType, Header, Phrases, ExcludedPhrases, Weight) | Designer Studio → Źródła danych → właściwości → ID; szablon zapytania w `docs/deployment/webcon-dictionary.md` |
 | Timeout in seconds | nie (300) | Maksymalny czas oczekiwania na splitter | Zwiększ dla dużych paczek z OCR |
 
 ## Procesy

@@ -25,10 +25,11 @@ folds all text to ASCII before matching.
 The splitter switches from the empty in-memory pattern list to this database
 as soon as `SPLITTER_DATABASE_CONNECTION_STRING` is set.
 
-## Tryb słownika WEBCON
+## Wzorce ze słownika WEBCON
 
-Gdy skonfigurowano odczyt słowników z procesu WEBCON
-(`docs/deployment/webcon-dictionary.md`), tabele `document_type`
-i `document_pattern` oraz `seed.sql` są używane wyłącznie w trybie
-standalone (praca bez WEBCON-a). Tabele `splitter_job`
-i `classification_feedback` są używane zawsze.
+Wzorce rozpoznawania dostarcza akcja SDK w każdym żądaniu (odczyt przez
+źródło danych — `docs/deployment/webcon-dictionary.md`); splitter nie
+potrzebuje żadnych uprawnień do bazy treści WEBCON. Tabele `document_type`
+i `document_pattern` oraz `seed.sql` służą wyłącznie do pracy standalone
+(bez WEBCON-a). Tabele `splitter_job` i `classification_feedback` są
+używane zawsze.

@@ -1,9 +1,10 @@
 # Słownik typów dokumentów w WEBCON
 
-Splitter czyta typy dokumentów i wzorce rozpoznawania bezpośrednio z bazy
-treści WEBCON (tylko odczyt). Edycja odbywa się wyłącznie w WEBCON —
-w procesie słownikowym opisanym niżej. Zmiany działają od następnego
-wywołania `/api/split`, bez restartu serwisu.
+Wzorce rozpoznawania są utrzymywane w procesie słownikowym WEBCON.
+Akcja SDK odczytuje je poprzez źródło danych (Designer Studio) i wysyła
+razem z PDF-em w każdym wywołaniu `/api/split` — splitter nie ma żadnego
+dostępu do bazy treści WEBCON. Zmiany w słowniku działają od następnego
+wywołania akcji, bez restartów.
 
 ## Proces słownikowy w Designer Studio
 
@@ -28,28 +29,40 @@ mieć dokładnie jedną listę pozycji:
 | Waga | Liczba zmiennoprzecinkowa | puste = 1,0 |
 | Aktywny | Pole wyboru | odznaczony = wzorzec wyłączony |
 
-## Odczyt ID i nazw kolumn
+## Źródło danych wzorców
 
-1. W Designer Studio włącz "Pokaż identyfikatory obiektów".
-2. ID typu formularza słownika → właściwości typu formularza
-   (`SPLITTER_WEBCON_DICT_FORM_TYPE_ID`).
-3. Nazwę kolumny bazodanowej każdego atrybutu znajdziesz we właściwościach
-   atrybutu (np. `WFD_AttText1` dla nagłówka, `DET_Att1` dla kolumn listy
-   pozycji). Wpisz je do zmiennych `SPLITTER_WEBCON_DICT_COL_*`
-   (tabela w `splitter-service.md`).
+W Designer Studio utwórz źródło danych (zapytanie SQL do bazy treści),
+które zwraca **wyłącznie aktywne** wzorce w kolumnach o dokładnie tych
+nazwach:
 
-## Uprawnienia SQL
+| Kolumna | Znaczenie |
+|---|---|
+| `DocumentType` | nazwa typu dokumentu |
+| `Header` | nagłówek wzorca (wiersz z pustym nagłówkiem jest pomijany) |
+| `Phrases` | frazy rozdzielane średnikami |
+| `ExcludedPhrases` | frazy wykluczające rozdzielane średnikami |
+| `Weight` | waga wzorca (puste = 1,0) |
 
-Konto splittera potrzebuje w bazie treści WEBCON wyłącznie:
+Szablon zapytania — dostosuj ID typu formularza i nazwy kolumn atrybutów
+(znajdziesz je we właściwościach atrybutów w Designer Studio):
 
 ```sql
-GRANT SELECT ON dbo.WFElements TO splitter_svc;
-GRANT SELECT ON dbo.WFElementDetails TO splitter_svc;
+SELECT
+    el.WFD_AttText1  AS DocumentType,
+    det.DET_Att1     AS Header,
+    det.DET_Att2     AS Phrases,
+    det.DET_Att3     AS ExcludedPhrases,
+    det.DET_Value1   AS Weight
+FROM dbo.WFElements el
+JOIN dbo.WFElementDetails det ON det.DET_WFDID = el.WFD_ID
+WHERE el.WFD_DTYPEID = 123          -- ID typu formularza slownika
+  AND el.WFD_IsDeleted = 0
+  AND el.WFD_AttBool1 = 1           -- typ aktywny
+  AND det.DET_Bool1 = 1             -- wzorzec aktywny
 ```
 
-Splitter nigdy nie pisze do bazy treści. Tabele operacyjne
-(`splitter_job`, `classification_feedback`) pozostają w bazie
-`WebconPdfSplitter`.
+ID tego źródła danych wpisz w konfiguracji akcji SplitPdfAction
+(pole "Patterns data source ID").
 
 ## Dane startowe (typy HR i wzorce)
 
@@ -79,10 +92,12 @@ i tak odbywa się po normalizacji do ASCII, ale ułatwia to diagnostykę.
 
 ## Rozwiązywanie problemów
 
-- Błąd 500 przy `/api/split` z komunikatem o mapowaniu → sprawdź zmienne
-  `SPLITTER_WEBCON_DICT_COL_*` (komunikat wskazuje brakującą/błędną zmienną);
+- Błąd akcji o brakujących kolumnach → nazwy kolumn w zapytaniu źródła
+  muszą brzmieć dokładnie: DocumentType, Header, Phrases, ExcludedPhrases,
+  Weight (aliasy `AS`).
+- Ostrzeżenie "patterns data source returned no rows" w logu akcji →
+  słownik pusty albo wszystkie wpisy nieaktywne; wszystko będzie
+  klasyfikowane jako "Nieznany typ dokumentu".
+- HTTP 400 od splittera z opisem "Invalid patterns payload" → źródło
+  zwraca wartości w złych typach (np. tekst w kolumnie Weight);
   szczegóły w `splitter_job.technical_error`.
-- Wszystko klasyfikowane jako "Nieznany typ dokumentu" → słownik pusty,
-  wpisy nieaktywne albo złe `SPLITTER_WEBCON_DICT_FORM_TYPE_ID`.
-- Ostrzeżenie o pustym nagłówku w logu → wiersz listy pozycji bez
-  nagłówka dokumentu (jest pomijany).
