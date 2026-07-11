@@ -3,7 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import uuid4
 
-from fastapi import FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from pydantic import TypeAdapter, ValidationError
 
 from webcon_pdf_splitter.classification.llm import DisabledLlmClassifier
@@ -67,6 +67,7 @@ def health() -> dict[str, str]:
 @app.post("/api/split", response_model=SplitResult)
 async def split_pdf_endpoint(
     file: UploadFile = File(...),
+    patterns: str | None = Form(default=None),
     authorization: str | None = Header(default=None),
     webcon_element_id: int | None = Header(default=None, alias="X-Webcon-Element-Id"),
 ) -> SplitResult:
@@ -88,7 +89,7 @@ async def split_pdf_endpoint(
     )
 
     try:
-        result = await _split(settings, file)
+        result = await _split(settings, file, patterns)
     except HTTPException as exc:
         jobs.finish_job(job_id, "failed", None, None, technical_error=str(exc.detail)[:2000])
         raise
@@ -101,8 +102,17 @@ async def split_pdf_endpoint(
     return result
 
 
-async def _split(settings: SplitterSettings, file: UploadFile) -> SplitResult:
-    repository = build_pattern_repository(settings)
+async def _split(
+    settings: SplitterSettings, file: UploadFile, patterns_field: str | None
+) -> SplitResult:
+    if patterns_field is not None:
+        try:
+            provided = parse_patterns_field(patterns_field)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        repository = InMemoryPatternRepository(provided)
+    else:
+        repository = build_pattern_repository(settings)
     pipeline = ClassificationPipeline(
         rule_classifier=RuleBasedClassifier(repository.list_active_patterns()),
         llm_classifier=DisabledLlmClassifier(),
