@@ -1,6 +1,23 @@
-from webcon_pdf_splitter.classification.llm import LlmClassifier
-from webcon_pdf_splitter.classification.rules import PageClassification, RuleBasedClassifier
+from dataclasses import dataclass
+import logging
+
+from webcon_pdf_splitter.classification.llm import LlmClassification, LlmClassifier
+from webcon_pdf_splitter.classification.rules import RuleBasedClassifier
 from webcon_pdf_splitter.contracts import DetectedDocument, SplitResult
+
+logger = logging.getLogger(__name__)
+
+UNKNOWN_DOCUMENT_TYPE = "Nieznany typ dokumentu"
+
+
+@dataclass
+class _Segment:
+    document_type: str
+    confidence: float
+    signals: list[str]
+    start_page: int
+    end_page: int
+    known: bool
 
 
 class ClassificationPipeline:
@@ -17,44 +34,81 @@ class ClassificationPipeline:
         self._min_review_confidence = min_review_confidence
 
     def split_pages(self, source_file_name: str, page_texts: list[str]) -> SplitResult:
-        classifications = [
-            self._classify_with_fallback(page_texts, index)
-            for index in range(len(page_texts))
-        ]
-        first_pages = [
-            classification
-            for classification in classifications
-            if classification.is_first_page
-        ]
-        if not first_pages and page_texts:
-            first_pages = [
-                PageClassification(
-                    page_number=1,
-                    is_first_page=True,
-                    document_type="Nieznany typ dokumentu",
-                    confidence=0.20,
-                    signals=["forced_first_page"],
-                )
-            ]
+        known_types = self._rule_classifier.known_document_types
+        segments: list[_Segment] = []
+        current: _Segment | None = None
 
-        documents: list[DetectedDocument] = []
-        for document_index, first_page in enumerate(first_pages, start=1):
-            next_first_page = first_pages[document_index] if document_index < len(first_pages) else None
-            end_page = (next_first_page.page_number - 1) if next_first_page else len(page_texts)
-            requires_review = first_page.confidence < self._min_auto_accept_confidence
-            documents.append(
-                DetectedDocument(
-                    documentIndex=document_index,
-                    documentType=first_page.document_type,
-                    confidence=first_page.confidence,
-                    requiresReview=requires_review,
-                    startPage=first_page.page_number,
-                    endPage=end_page,
-                    outputFileName=self._file_name(document_index, first_page.document_type, first_page.page_number, end_page),
-                    signals=first_page.signals,
-                    metadata={},
+        for index, text in enumerate(page_texts):
+            page_number = index + 1
+            page = self._rule_classifier.classify_page(text, page_number)
+
+            if page.is_first_page:
+                current = _Segment(
+                    document_type=page.document_type,
+                    confidence=page.confidence,
+                    signals=page.signals,
+                    start_page=page_number,
+                    end_page=page_number,
+                    known=True,
                 )
+                segments.append(current)
+                continue
+
+            if current is not None and current.known and current.document_type in page.phrase_affinities:
+                current.end_page = page_number
+                continue
+
+            llm = self._try_llm(page_texts, index, known_types)
+            if llm is not None and llm.confidence >= self._min_review_confidence:
+                if llm.isFirstPage:
+                    current = _Segment(
+                        document_type=llm.documentType,
+                        confidence=llm.confidence,
+                        signals=[f"llm:{code}" for code in llm.reasonCodes],
+                        start_page=page_number,
+                        end_page=page_number,
+                        known=True,
+                    )
+                    segments.append(current)
+                    continue
+                if current is not None and current.known and llm.documentType == current.document_type:
+                    current.end_page = page_number
+                    continue
+
+            if current is not None and not current.known:
+                current.end_page = page_number
+            else:
+                current = _Segment(
+                    document_type=UNKNOWN_DOCUMENT_TYPE,
+                    confidence=0.20,
+                    signals=["unknown_run"],
+                    start_page=page_number,
+                    end_page=page_number,
+                    known=False,
+                )
+                segments.append(current)
+
+        documents = [
+            DetectedDocument(
+                documentIndex=document_index,
+                documentType=segment.document_type,
+                confidence=segment.confidence,
+                requiresReview=segment.confidence < self._min_auto_accept_confidence,
+                startPage=segment.start_page,
+                endPage=segment.end_page,
+                outputFileName=self._file_name(
+                    document_index, segment.document_type, segment.start_page, segment.end_page
+                ),
+                signals=segment.signals,
+                metadata={},
             )
+            for document_index, segment in enumerate(segments, start=1)
+        ]
+        warnings = [
+            f"Strony {segment.start_page}-{segment.end_page}: nierozpoznany dokument"
+            for segment in segments
+            if not segment.known
+        ]
 
         status = "requires_review" if any(document.requiresReview for document in documents) else "completed"
         return SplitResult(
@@ -62,31 +116,22 @@ class ClassificationPipeline:
             pageCount=len(page_texts),
             status=status,
             documents=documents,
-            warnings=[],
+            warnings=warnings,
         )
 
-    def _classify_with_fallback(self, page_texts: list[str], index: int) -> PageClassification:
-        page_number = index + 1
-        rule_result = self._rule_classifier.classify_page(page_texts[index], page_number)
-        if rule_result.confidence >= self._min_auto_accept_confidence:
-            return rule_result
-
-        llm_result = self._llm_classifier.classify_uncertain_page(
-            current_text=page_texts[index],
-            previous_text=page_texts[index - 1] if index > 0 else "",
-            next_text=page_texts[index + 1] if index + 1 < len(page_texts) else "",
-            known_document_types=[],
-        )
-        if llm_result is None or llm_result.confidence <= rule_result.confidence:
-            return rule_result
-
-        return PageClassification(
-            page_number=page_number,
-            is_first_page=llm_result.isFirstPage,
-            document_type=llm_result.documentType,
-            confidence=llm_result.confidence,
-            signals=[f"llm:{code}" for code in llm_result.reasonCodes],
-        )
+    def _try_llm(
+        self, page_texts: list[str], index: int, known_types: list[str]
+    ) -> LlmClassification | None:
+        try:
+            return self._llm_classifier.classify_uncertain_page(
+                current_text=page_texts[index],
+                previous_text=page_texts[index - 1] if index > 0 else "",
+                next_text=page_texts[index + 1] if index + 1 < len(page_texts) else "",
+                known_document_types=known_types,
+            )
+        except Exception:
+            logger.warning("LLM classification failed for page %s", index + 1, exc_info=True)
+            return None
 
     @staticmethod
     def _file_name(index: int, document_type: str, start_page: int, end_page: int) -> str:
