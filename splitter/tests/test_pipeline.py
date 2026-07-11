@@ -243,6 +243,62 @@ def test_llm_low_confidence_glues_page_with_forced_review():
     assert result.documents[0].requiresReview is True
 
 
+def test_review_reasons_empty_for_auto_accepted_document():
+    result = _make_pipeline().split_pages(
+        "scan.pdf", ["UMOWA O PRACE zawarta z pracodawca"]
+    )
+
+    doc = result.documents[0]
+    assert doc.requiresReview is False
+    assert doc.reviewReasons == []
+
+
+def test_review_reasons_for_glued_page():
+    result = _make_pipeline().split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "obcy zalacznik bez fraz"],
+    )
+
+    doc = result.documents[0]
+    assert doc.requiresReview is True
+    assert doc.reviewReasons == ["strona 2 doklejona bez dopasowania do wzorca"]
+
+
+def test_review_reasons_for_low_confidence_document():
+    stub = _StubLlm(
+        responses={
+            "PISMO PRZEWODNIE tresc": LlmClassification(
+                isFirstPage=True,
+                documentType="Pismo przewodnie",
+                isKnownType=False,
+                confidence=0.85,
+                reasonCodes=["layout"],
+            )
+        }
+    )
+    result = _make_pipeline(llm_classifier=stub).split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "PISMO PRZEWODNIE tresc"],
+    )
+
+    pismo = result.documents[1]
+    assert pismo.requiresReview is True
+    assert pismo.reviewReasons == [
+        "pewnosc 0.85 ponizej progu auto-akceptacji 0.90"
+    ]
+
+
+def test_review_reasons_for_unknown_document():
+    result = _make_pipeline().split_pages("scan.pdf", ["obca 1", "obca 2"])
+
+    doc = result.documents[0]
+    assert doc.requiresReview is True
+    assert doc.reviewReasons == [
+        "nierozpoznany typ dokumentu (zadna regula nie pasowala)",
+        "pewnosc 0.20 ponizej progu auto-akceptacji 0.90",
+    ]
+
+
 def test_llm_not_called_for_affine_continuation_pages():
     stub = _StubLlm()
     result = _make_pipeline(llm_classifier=stub).split_pages(

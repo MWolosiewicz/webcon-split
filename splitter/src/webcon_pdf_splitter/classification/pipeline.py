@@ -95,23 +95,28 @@ class ClassificationPipeline:
                 )
                 segments.append(current)
 
-        documents = [
-            DetectedDocument(
-                documentIndex=document_index,
-                documentType=segment.document_type,
-                confidence=segment.confidence,
-                requiresReview=segment.forced_review
-                or segment.confidence < self._min_auto_accept_confidence,
-                startPage=segment.start_page,
-                endPage=segment.end_page,
-                outputFileName=self._file_name(
-                    document_index, segment.document_type, segment.start_page, segment.end_page
-                ),
-                signals=segment.signals,
-                metadata={},
+        documents: list[DetectedDocument] = []
+        for document_index, segment in enumerate(segments, start=1):
+            requires_review = (
+                segment.forced_review
+                or segment.confidence < self._min_auto_accept_confidence
             )
-            for document_index, segment in enumerate(segments, start=1)
-        ]
+            documents.append(
+                DetectedDocument(
+                    documentIndex=document_index,
+                    documentType=segment.document_type,
+                    confidence=segment.confidence,
+                    requiresReview=requires_review,
+                    reviewReasons=self._review_reasons(segment) if requires_review else [],
+                    startPage=segment.start_page,
+                    endPage=segment.end_page,
+                    outputFileName=self._file_name(
+                        document_index, segment.document_type, segment.start_page, segment.end_page
+                    ),
+                    signals=segment.signals,
+                    metadata={},
+                )
+            )
         warnings: list[str] = []
         for segment in segments:
             if not segment.known:
@@ -146,6 +151,19 @@ class ClassificationPipeline:
         except Exception:
             logger.warning("LLM classification failed for page %s", index + 1, exc_info=True)
             return None
+
+    def _review_reasons(self, segment: _Segment) -> list[str]:
+        reasons: list[str] = []
+        if not segment.known:
+            reasons.append("nierozpoznany typ dokumentu (zadna regula nie pasowala)")
+        for page in segment.glued_pages:
+            reasons.append(f"strona {page} doklejona bez dopasowania do wzorca")
+        if segment.confidence < self._min_auto_accept_confidence:
+            reasons.append(
+                f"pewnosc {segment.confidence:.2f} ponizej progu auto-akceptacji "
+                f"{self._min_auto_accept_confidence:.2f}"
+            )
+        return reasons
 
     @staticmethod
     def _file_name(index: int, document_type: str, start_page: int, end_page: int) -> str:

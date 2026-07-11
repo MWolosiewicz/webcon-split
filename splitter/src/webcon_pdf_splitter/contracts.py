@@ -24,6 +24,7 @@ class DetectedDocument(BaseModel):
     documentType: str
     confidence: float = Field(ge=0.0, le=1.0)
     requiresReview: bool
+    reviewReasons: list[str] = Field(default_factory=list)
     startPage: int = Field(ge=1)
     endPage: int = Field(ge=1)
     outputFileName: str

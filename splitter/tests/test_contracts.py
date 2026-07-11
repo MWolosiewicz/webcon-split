@@ -27,3 +27,22 @@ def test_split_result_serializes_required_fields():
     assert payload["sourceFileName"] == "scan.pdf"
     assert payload["documents"][0]["startPage"] == 1
     assert payload["documents"][0]["requiresReview"] is False
+
+
+def test_detected_document_review_reasons_default_and_serialization():
+    document = DetectedDocument(
+        documentIndex=1,
+        documentType="Nieznany typ dokumentu",
+        confidence=0.20,
+        requiresReview=True,
+        startPage=1,
+        endPage=2,
+        outputFileName="001_Nieznany_typ_dokumentu_strony_001-002.pdf",
+    )
+    assert document.reviewReasons == []
+
+    document.reviewReasons = ["nierozpoznany typ dokumentu (zadna regula nie pasowala)"]
+    payload = document.model_dump()
+    assert payload["reviewReasons"] == [
+        "nierozpoznany typ dokumentu (zadna regula nie pasowala)"
+    ]
