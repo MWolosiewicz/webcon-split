@@ -1,20 +1,12 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import json
-import logging
-import re
 from typing import TYPE_CHECKING, Protocol
 
 import pyodbc
 
 if TYPE_CHECKING:
     from webcon_pdf_splitter.config import SplitterSettings
-
-
-def split_phrases(value: str | None) -> list[str]:
-    if not value:
-        return []
-    return [phrase.strip() for phrase in value.split(";") if phrase.strip()]
 
 
 @dataclass(frozen=True)
@@ -40,92 +32,7 @@ class InMemoryPatternRepository:
         return [pattern for pattern in self._patterns if pattern.active]
 
 
-logger = logging.getLogger(__name__)
-
-_SQL_IDENTIFIER = re.compile(r"^[A-Za-z0-9_]+$")
-
-
-class WebconDictionaryPatternRepository:
-    _COLUMN_SETTINGS = (
-        "webcon_dict_col_type_name",
-        "webcon_dict_col_type_active",
-        "webcon_dict_col_pattern_header",
-        "webcon_dict_col_pattern_phrases",
-        "webcon_dict_col_pattern_excluded",
-        "webcon_dict_col_pattern_weight",
-        "webcon_dict_col_pattern_active",
-    )
-
-    def __init__(self, settings: "SplitterSettings") -> None:
-        missing = [name for name in self._COLUMN_SETTINGS if not getattr(settings, name)]
-        if missing:
-            raise ValueError(
-                "Incomplete WEBCON dictionary mapping, set: "
-                + ", ".join(f"SPLITTER_{name.upper()}" for name in missing)
-            )
-        invalid = [
-            name
-            for name in self._COLUMN_SETTINGS
-            if not _SQL_IDENTIFIER.match(getattr(settings, name))
-        ]
-        if invalid:
-            raise ValueError(
-                "Invalid WEBCON dictionary column names (letters, digits, underscore only): "
-                + ", ".join(f"SPLITTER_{name.upper()}" for name in invalid)
-            )
-        self._settings = settings
-
-    def _build_query(self) -> str:
-        s = self._settings
-        return f"""
-            SELECT el.[{s.webcon_dict_col_type_name}],
-                   det.[{s.webcon_dict_col_pattern_header}],
-                   det.[{s.webcon_dict_col_pattern_phrases}],
-                   det.[{s.webcon_dict_col_pattern_excluded}],
-                   det.[{s.webcon_dict_col_pattern_weight}]
-            FROM dbo.WFElements el
-            JOIN dbo.WFElementDetails det ON det.DET_WFDID = el.WFD_ID
-            WHERE el.WFD_DTYPEID = ?
-              AND el.WFD_IsDeleted = 0
-              AND el.[{s.webcon_dict_col_type_active}] = 1
-              AND det.[{s.webcon_dict_col_pattern_active}] = 1
-        """
-
-    def list_active_patterns(self) -> list[DocumentPattern]:
-        settings = self._settings
-        with pyodbc.connect(settings.webcon_db_connection_string) as connection:
-            rows = (
-                connection.cursor()
-                .execute(self._build_query(), settings.webcon_dict_form_type_id)
-                .fetchall()
-            )
-        return self._map_rows(rows)
-
-    def _map_rows(self, rows) -> list[DocumentPattern]:
-        patterns: list[DocumentPattern] = []
-        for row in rows:
-            header = (row[1] or "").strip()
-            if not header:
-                logger.warning(
-                    "Skipping WEBCON dictionary pattern row with empty header (type: %s)", row[0]
-                )
-                continue
-            patterns.append(
-                DocumentPattern(
-                    document_type=row[0],
-                    header=header,
-                    phrases=split_phrases(row[2]),
-                    excluded_phrases=split_phrases(row[3]),
-                    weight=float(row[4]) if row[4] is not None else 1.0,
-                    active=True,
-                )
-            )
-        return patterns
-
-
 def build_pattern_repository(settings: "SplitterSettings") -> PatternRepository:
-    if settings.webcon_db_connection_string and settings.webcon_dict_form_type_id:
-        return WebconDictionaryPatternRepository(settings)
     if settings.database_connection_string:
         return SqlServerPatternRepository(settings.database_connection_string)
     return InMemoryPatternRepository(patterns=[])
