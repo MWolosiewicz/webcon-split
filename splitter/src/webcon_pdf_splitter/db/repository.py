@@ -75,6 +75,27 @@ class WebconDictionaryPatternRepository:
             )
         self._settings = settings
 
+    def _map_rows(self, rows) -> list[DocumentPattern]:
+        patterns: list[DocumentPattern] = []
+        for row in rows:
+            header = (row[1] or "").strip()
+            if not header:
+                logger.warning(
+                    "Skipping WEBCON dictionary pattern row with empty header (type: %s)", row[0]
+                )
+                continue
+            patterns.append(
+                DocumentPattern(
+                    document_type=row[0],
+                    header=header,
+                    phrases=split_phrases(row[2]),
+                    excluded_phrases=split_phrases(row[3]),
+                    weight=float(row[4]) if row[4] is not None else 1.0,
+                    active=True,
+                )
+            )
+        return patterns
+
 
 def build_pattern_repository(settings: "SplitterSettings") -> PatternRepository:
     if settings.database_connection_string:

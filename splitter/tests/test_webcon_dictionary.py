@@ -88,3 +88,47 @@ def test_repository_rejects_invalid_column_identifier():
         )
 
     assert "SPLITTER_WEBCON_DICT_COL_TYPE_NAME" in str(exc.value)
+
+
+def test_map_rows_builds_document_patterns():
+    repository = WebconDictionaryPatternRepository(_webcon_settings())
+
+    patterns = repository._map_rows(
+        [
+            ("Umowa o prace", "UMOWA O PRACE", "pracodawca; pracownik", "aneks", 1.2),
+        ]
+    )
+
+    assert len(patterns) == 1
+    pattern = patterns[0]
+    assert pattern.document_type == "Umowa o prace"
+    assert pattern.header == "UMOWA O PRACE"
+    assert pattern.phrases == ["pracodawca", "pracownik"]
+    assert pattern.excluded_phrases == ["aneks"]
+    assert pattern.weight == 1.2
+    assert pattern.active is True
+
+
+def test_map_rows_defaults_missing_weight_to_one():
+    repository = WebconDictionaryPatternRepository(_webcon_settings())
+
+    patterns = repository._map_rows([("Typ", "NAGLOWEK", None, None, None)])
+
+    assert patterns[0].weight == 1.0
+    assert patterns[0].phrases == []
+    assert patterns[0].excluded_phrases == []
+
+
+def test_map_rows_skips_rows_with_empty_header():
+    repository = WebconDictionaryPatternRepository(_webcon_settings())
+
+    patterns = repository._map_rows(
+        [
+            ("Typ", None, "fraza", None, 1.0),
+            ("Typ", "   ", "fraza", None, 1.0),
+            ("Typ", "PRAWIDLOWY", "fraza", None, 1.0),
+        ]
+    )
+
+    assert len(patterns) == 1
+    assert patterns[0].header == "PRAWIDLOWY"
