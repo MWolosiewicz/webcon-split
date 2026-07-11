@@ -1,4 +1,12 @@
-from webcon_pdf_splitter.classification.llm import DisabledLlmClassifier, LlmClassification
+import pytest
+
+from webcon_pdf_splitter.classification import llm as llm_module
+from webcon_pdf_splitter.classification.llm import (
+    DisabledLlmClassifier,
+    LlmClassification,
+    OpenAiCompatibleLlmClassifier,
+    extract_json_object,
+)
 
 
 def test_disabled_llm_returns_none():
@@ -26,3 +34,123 @@ def test_llm_classification_requires_valid_confidence():
 
     assert result.confidence == 0.82
     assert result.isFirstPage is True
+
+
+class _FakeResponse:
+    def __init__(self, status_code, payload=None, text=""):
+        self.status_code = status_code
+        self._payload = payload
+        self.text = text
+
+    @property
+    def ok(self):
+        return self.status_code < 400
+
+    def json(self):
+        return self._payload
+
+
+def _completion(content):
+    return {"choices": [{"message": {"content": content}}]}
+
+
+_VALID_JSON = (
+    '{"isFirstPage": true, "documentType": "Wniosek", "isKnownType": false,'
+    ' "confidence": 0.9, "reasonCodes": [], "suggestedNewPatterns": []}'
+)
+
+
+def test_extract_json_object_strips_markdown_fences():
+    fenced = "```json\n" + _VALID_JSON + "\n```"
+
+    assert extract_json_object(fenced) == _VALID_JSON
+
+
+def test_extract_json_object_passes_plain_json_through():
+    assert extract_json_object(_VALID_JSON) == _VALID_JSON
+
+
+def test_extract_json_object_rejects_content_without_json():
+    with pytest.raises(ValueError):
+        extract_json_object("przepraszam, nie moge pomoc")
+
+
+def test_retries_without_response_format_on_http_400(monkeypatch):
+    calls = []
+
+    def fake_post(url, json=None, timeout=None):
+        calls.append(json)
+        if "response_format" in json:
+            return _FakeResponse(400, text="'response_format.type' must be 'json_schema' or 'text'")
+        return _FakeResponse(200, payload=_completion("```json\n" + _VALID_JSON + "\n```"))
+
+    monkeypatch.setattr(llm_module.requests, "post", fake_post)
+    classifier = OpenAiCompatibleLlmClassifier("http://llm:1234/v1", "model-x")
+
+    result = classifier.classify_uncertain_page("tekst", "", "", ["Umowa o prace"])
+
+    assert result is not None
+    assert result.isFirstPage is True
+    assert result.documentType == "Wniosek"
+    assert len(calls) == 2
+    assert "response_format" in calls[0]
+    assert "response_format" not in calls[1]
+
+
+def test_http_error_message_includes_response_body(monkeypatch):
+    def fake_post(url, json=None, timeout=None):
+        return _FakeResponse(400, text="model not loaded")
+
+    monkeypatch.setattr(llm_module.requests, "post", fake_post)
+    classifier = OpenAiCompatibleLlmClassifier("http://llm:1234/v1", "model-x")
+
+    with pytest.raises(RuntimeError) as exc:
+        classifier.classify_uncertain_page("tekst", "", "", [])
+
+    assert "model not loaded" in str(exc.value)
+
+
+def test_percent_confidence_is_normalized_to_fraction(monkeypatch):
+    content = (
+        '{"isFirstPage": true, "documentType": "Wniosek", "isKnownType": false,'
+        ' "confidence": 60, "reasonCodes": [], "suggestedNewPatterns": []}'
+    )
+
+    def fake_post(url, json=None, timeout=None):
+        return _FakeResponse(200, payload=_completion(content))
+
+    monkeypatch.setattr(llm_module.requests, "post", fake_post)
+    classifier = OpenAiCompatibleLlmClassifier("http://llm:1234/v1", "model-x")
+
+    result = classifier.classify_uncertain_page("tekst", "", "", [])
+
+    assert result is not None
+    assert result.confidence == 0.6
+
+
+def test_null_document_type_returns_none(monkeypatch):
+    content = (
+        '{"isFirstPage": true, "documentType": null, "isKnownType": false,'
+        ' "confidence": 0.9, "reasonCodes": [], "suggestedNewPatterns": []}'
+    )
+
+    def fake_post(url, json=None, timeout=None):
+        return _FakeResponse(200, payload=_completion(content))
+
+    monkeypatch.setattr(llm_module.requests, "post", fake_post)
+    classifier = OpenAiCompatibleLlmClassifier("http://llm:1234/v1", "model-x")
+
+    assert classifier.classify_uncertain_page("tekst", "", "", []) is None
+
+
+def test_plain_json_response_still_parses(monkeypatch):
+    def fake_post(url, json=None, timeout=None):
+        return _FakeResponse(200, payload=_completion(_VALID_JSON))
+
+    monkeypatch.setattr(llm_module.requests, "post", fake_post)
+    classifier = OpenAiCompatibleLlmClassifier("http://llm:1234/v1", "model-x")
+
+    result = classifier.classify_uncertain_page("tekst", "", "", [])
+
+    assert result is not None
+    assert result.confidence == 0.9

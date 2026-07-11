@@ -1,7 +1,20 @@
+import json
+import logging
 from typing import Protocol
 
 from pydantic import BaseModel, Field
 import requests
+
+logger = logging.getLogger(__name__)
+
+
+def extract_json_object(content: str) -> str:
+    """Local models often wrap JSON in markdown fences or prose."""
+    start = content.find("{")
+    end = content.rfind("}")
+    if start == -1 or end < start:
+        raise ValueError(f"LLM response contains no JSON object: {content[:200]}")
+    return content[start : end + 1]
 
 
 class LlmClassification(BaseModel):
@@ -49,25 +62,40 @@ class OpenAiCompatibleLlmClassifier:
         known_document_types: list[str],
     ) -> LlmClassification | None:
         prompt = self._build_prompt(current_text, previous_text, next_text, known_document_types)
-        response = requests.post(
-            f"{self._endpoint}/chat/completions",
-            json={
-                "model": self._model,
-                "temperature": 0,
-                "response_format": {"type": "json_object"},
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "Klasyfikujesz strony dokumentow HR. Odpowiadasz tylko poprawnym JSON.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-            },
-            timeout=self._timeout_seconds,
-        )
-        response.raise_for_status()
+        payload = {
+            "model": self._model,
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "Klasyfikujesz strony dokumentow HR. Odpowiadasz tylko poprawnym JSON.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+        }
+        url = f"{self._endpoint}/chat/completions"
+        response = requests.post(url, json=payload, timeout=self._timeout_seconds)
+        if response.status_code == 400:
+            # np. LM Studio: "'response_format.type' must be 'json_schema' or 'text'"
+            logger.info(
+                "LLM endpoint rejected the request (%s); retrying without response_format",
+                response.text[:200],
+            )
+            payload = {key: value for key, value in payload.items() if key != "response_format"}
+            response = requests.post(url, json=payload, timeout=self._timeout_seconds)
+        if not response.ok:
+            raise RuntimeError(f"LLM HTTP {response.status_code}: {response.text[:500]}")
         content = response.json()["choices"][0]["message"]["content"]
-        return LlmClassification.model_validate_json(content)
+        data = json.loads(extract_json_object(content))
+        if not data.get("documentType"):
+            logger.info("LLM returned no documentType; treating the verdict as unusable")
+            return None
+        confidence = data.get("confidence")
+        if isinstance(confidence, (int, float)) and confidence > 1:
+            # niektore modele zwracaja procenty zamiast ulamka 0-1
+            data["confidence"] = confidence / 100 if confidence <= 100 else 1.0
+        return LlmClassification.model_validate(data)
 
     @staticmethod
     def _build_prompt(
@@ -77,9 +105,14 @@ class OpenAiCompatibleLlmClassifier:
         known_document_types: list[str],
     ) -> str:
         return (
-            "Ustal, czy AKTUALNA_STRONA jest pierwsza strona dokumentu HR. "
-            "Zwroc JSON z polami: isFirstPage, documentType, isKnownType, confidence, "
-            "reasonCodes, suggestedNewPatterns.\n\n"
+            "Ustal, czy AKTUALNA_STRONA jest pierwsza strona nowego dokumentu HR, "
+            "czy kontynuacja poprzedniego dokumentu. "
+            "Zwroc TYLKO jeden obiekt JSON, bez zadnego innego tekstu, dokladnie w formacie: "
+            '{"isFirstPage": true|false, "documentType": "<nazwa typu dokumentu>", '
+            '"isKnownType": true|false, "confidence": <liczba od 0.0 do 1.0>, '
+            '"reasonCodes": ["<krotki_kod_powodu>"], "suggestedNewPatterns": ["<fraza>"]}. '
+            "Jesli typ pasuje do ktoregos ze ZNANE_TYPY, uzyj dokladnie tej nazwy "
+            "i ustaw isKnownType=true. documentType nigdy nie moze byc null.\n\n"
             f"ZNANE_TYPY={known_document_types}\n\n"
             f"POPRZEDNIA_STRONA={previous_text[:2000]}\n\n"
             f"AKTUALNA_STRONA={current_text[:4000]}\n\n"
