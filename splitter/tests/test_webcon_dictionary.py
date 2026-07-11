@@ -1,0 +1,26 @@
+from webcon_pdf_splitter.config import SplitterSettings
+
+
+def test_webcon_dictionary_settings_default_to_disabled():
+    settings = SplitterSettings(webcon_db_connection_string="", webcon_dict_form_type_id=0)
+
+    assert settings.webcon_db_connection_string == ""
+    assert settings.webcon_dict_form_type_id == 0
+    assert settings.webcon_dict_col_type_name == ""
+    assert settings.webcon_dict_col_type_active == ""
+    assert settings.webcon_dict_col_pattern_header == ""
+    assert settings.webcon_dict_col_pattern_phrases == ""
+    assert settings.webcon_dict_col_pattern_excluded == ""
+    assert settings.webcon_dict_col_pattern_weight == ""
+    assert settings.webcon_dict_col_pattern_active == ""
+
+
+def test_webcon_dictionary_settings_accept_values():
+    settings = SplitterSettings(
+        webcon_db_connection_string="Driver={ODBC Driver 18 for SQL Server};Server=sql;Database=BPS_Content;",
+        webcon_dict_form_type_id=123,
+        webcon_dict_col_type_name="WFD_AttText1",
+    )
+
+    assert settings.webcon_dict_form_type_id == 123
+    assert settings.webcon_dict_col_type_name == "WFD_AttText1"
