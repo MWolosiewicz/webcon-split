@@ -3,7 +3,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class SplitterSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="SPLITTER_", env_file=".env")
+    # extra="ignore": nieznane zmienne SPLITTER_* w .env (np. po usunieciu
+    # opcji w nowszej wersji) nie moga wywracac startu serwisu
+    model_config = SettingsConfigDict(env_prefix="SPLITTER_", env_file=".env", extra="ignore")
 
     work_dir: str = Field(default="./work")
     min_auto_accept_confidence: float = Field(default=0.90)
