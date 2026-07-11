@@ -119,12 +119,13 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
             $"Configuration field '{fieldName}' must evaluate to a positive integer, got: '{configuredValue}'.");
     }
 
-    private static string FormatDetectionComment(DetectedDocument detected)
+    private string FormatDetectionComment(DetectedDocument detected)
     {
         var comment =
             $"Type: {detected.DocumentType}; pages {detected.StartPage}-{detected.EndPage}; " +
             $"confidence {detected.Confidence:0.00}; requires review: {detected.RequiresReview}";
-        if (detected.ReviewReasons.Count > 0)
+        // powody trafiaja do komentarza tylko, gdy nie sa zapisywane w dedykowanym polu
+        if (Configuration.ReviewReasonsFieldId <= 0 && detected.ReviewReasons.Count > 0)
             comment += $"; review reasons: {string.Join("; ", detected.ReviewReasons)}";
         return comment;
     }

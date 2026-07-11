@@ -89,7 +89,8 @@ public class SplitPdfActionConfig : PluginConfiguration
         DisplayName = "Review reasons field ID",
         Description = "Opcjonalne: pole tekstowe (najlepiej wieloliniowe) w obiegu docelowym, " +
                       "w ktore akcja zapisze powody weryfikacji, jeden na linie. " +
-                      "Zostaw puste, aby nie zapisywac.",
+                      "Gdy ustawione, powody nie sa dublowane w komentarzu elementu. " +
+                      "Zostaw puste, aby powody trafialy do komentarza.",
         Order = 9)]
     public int ReviewReasonsFieldId { get; set; }
 }
