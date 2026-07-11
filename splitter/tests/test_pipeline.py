@@ -1,4 +1,4 @@
-from webcon_pdf_splitter.classification.llm import DisabledLlmClassifier
+from webcon_pdf_splitter.classification.llm import DisabledLlmClassifier, LlmClassification
 from webcon_pdf_splitter.classification.pipeline import ClassificationPipeline
 from webcon_pdf_splitter.classification.rules import RuleBasedClassifier
 from webcon_pdf_splitter.db.repository import DocumentPattern
@@ -144,3 +144,106 @@ def test_fully_unknown_bundle_is_single_unknown_document():
     ]
     assert result.status == "requires_review"
     _assert_full_coverage(result, 2)
+
+
+class _StubLlm:
+    def __init__(self, responses=None, error=None):
+        self._responses = responses or {}
+        self._error = error
+        self.calls = []
+
+    def classify_uncertain_page(self, current_text, previous_text, next_text, known_document_types):
+        self.calls.append({"text": current_text, "known_types": known_document_types})
+        if self._error is not None:
+            raise self._error
+        return self._responses.get(current_text)
+
+
+def test_llm_promotes_unknown_page_to_known_first_page():
+    stub = _StubLlm(
+        responses={
+            "PISMO PRZEWODNIE tresc": LlmClassification(
+                isFirstPage=True,
+                documentType="Pismo przewodnie",
+                isKnownType=False,
+                confidence=0.85,
+                reasonCodes=["layout"],
+            )
+        }
+    )
+    result = _make_pipeline(llm_classifier=stub).split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "PISMO PRZEWODNIE tresc"],
+    )
+
+    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
+        ("Umowa o prace", 1, 1),
+        ("Pismo przewodnie", 2, 2),
+    ]
+    assert result.documents[1].requiresReview is True
+    assert result.documents[1].signals == ["llm:layout"]
+    assert stub.calls[0]["known_types"] == ["Swiadectwo pracy", "Umowa o prace"]
+
+
+def test_llm_confirms_continuation_of_current_document():
+    stub = _StubLlm(
+        responses={
+            "strona bez zadnych fraz": LlmClassification(
+                isFirstPage=False,
+                documentType="Umowa o prace",
+                isKnownType=True,
+                confidence=0.80,
+            )
+        }
+    )
+    result = _make_pipeline(llm_classifier=stub).split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "strona bez zadnych fraz"],
+    )
+
+    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
+        ("Umowa o prace", 1, 2),
+    ]
+
+
+def test_llm_error_leaves_page_unknown():
+    stub = _StubLlm(error=RuntimeError("llm down"))
+    result = _make_pipeline(llm_classifier=stub).split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "strona bez zadnych fraz"],
+    )
+
+    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
+        ("Umowa o prace", 1, 1),
+        ("Nieznany typ dokumentu", 2, 2),
+    ]
+
+
+def test_llm_low_confidence_leaves_page_unknown():
+    stub = _StubLlm(
+        responses={
+            "strona bez zadnych fraz": LlmClassification(
+                isFirstPage=True,
+                documentType="Pismo",
+                isKnownType=False,
+                confidence=0.50,
+            )
+        }
+    )
+    result = _make_pipeline(llm_classifier=stub).split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "strona bez zadnych fraz"],
+    )
+
+    assert result.documents[1].documentType == "Nieznany typ dokumentu"
+
+
+def test_llm_not_called_for_affine_continuation_pages():
+    stub = _StubLlm()
+    result = _make_pipeline(llm_classifier=stub).split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "wynagrodzenie zasadnicze"],
+    )
+
+    assert len(result.documents) == 1
+    assert stub.calls == []
