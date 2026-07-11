@@ -18,6 +18,7 @@ public sealed class DetectedDocument
     public string DocumentType { get; set; } = "";
     public double Confidence { get; set; }
     public bool RequiresReview { get; set; }
+    public List<string> ReviewReasons { get; set; } = new();
     public int StartPage { get; set; }
     public int EndPage { get; set; }
     public string OutputFileName { get; set; } = "";
