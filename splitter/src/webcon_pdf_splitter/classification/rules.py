@@ -12,15 +12,21 @@ class PageClassification:
     document_type: str
     confidence: float
     signals: list[str] = field(default_factory=list)
+    phrase_affinities: set[str] = field(default_factory=set)
 
 
 class RuleBasedClassifier:
     def __init__(self, patterns: list[DocumentPattern]) -> None:
         self._patterns = patterns
 
+    @property
+    def known_document_types(self) -> list[str]:
+        return sorted({pattern.document_type for pattern in self._patterns})
+
     def classify_page(self, text: str, page_number: int) -> PageClassification:
         normalized = self._normalize(text)
         best: PageClassification | None = None
+        affinities: set[str] = set()
 
         for pattern in self._patterns:
             header = self._normalize(pattern.header)
@@ -37,6 +43,9 @@ class RuleBasedClassifier:
 
             if excluded_hit:
                 continue
+
+            if phrase_hits:
+                affinities.add(pattern.document_type)
 
             score = 0.0
             signals: list[str] = []
@@ -65,9 +74,17 @@ class RuleBasedClassifier:
                 document_type="Nieznany typ dokumentu",
                 confidence=0.20,
                 signals=["no_pattern_match"],
+                phrase_affinities=affinities,
             )
 
-        return best
+        return PageClassification(
+            page_number=best.page_number,
+            is_first_page=best.is_first_page,
+            document_type=best.document_type,
+            confidence=best.confidence,
+            signals=best.signals,
+            phrase_affinities=affinities,
+        )
 
     @staticmethod
     def _normalize(value: str) -> str:
