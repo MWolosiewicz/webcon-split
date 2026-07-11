@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import json
+import logging
+import re
 from typing import TYPE_CHECKING, Protocol
 
 import pyodbc
@@ -36,6 +38,42 @@ class InMemoryPatternRepository:
 
     def list_active_patterns(self) -> list[DocumentPattern]:
         return [pattern for pattern in self._patterns if pattern.active]
+
+
+logger = logging.getLogger(__name__)
+
+_SQL_IDENTIFIER = re.compile(r"^[A-Za-z0-9_]+$")
+
+
+class WebconDictionaryPatternRepository:
+    _COLUMN_SETTINGS = (
+        "webcon_dict_col_type_name",
+        "webcon_dict_col_type_active",
+        "webcon_dict_col_pattern_header",
+        "webcon_dict_col_pattern_phrases",
+        "webcon_dict_col_pattern_excluded",
+        "webcon_dict_col_pattern_weight",
+        "webcon_dict_col_pattern_active",
+    )
+
+    def __init__(self, settings: "SplitterSettings") -> None:
+        missing = [name for name in self._COLUMN_SETTINGS if not getattr(settings, name)]
+        if missing:
+            raise ValueError(
+                "Incomplete WEBCON dictionary mapping, set: "
+                + ", ".join(f"SPLITTER_{name.upper()}" for name in missing)
+            )
+        invalid = [
+            name
+            for name in self._COLUMN_SETTINGS
+            if not _SQL_IDENTIFIER.match(getattr(settings, name))
+        ]
+        if invalid:
+            raise ValueError(
+                "Invalid WEBCON dictionary column names (letters, digits, underscore only): "
+                + ", ".join(f"SPLITTER_{name.upper()}" for name in invalid)
+            )
+        self._settings = settings
 
 
 def build_pattern_repository(settings: "SplitterSettings") -> PatternRepository:
