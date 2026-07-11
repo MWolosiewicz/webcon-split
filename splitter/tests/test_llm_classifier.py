@@ -128,10 +128,14 @@ def test_percent_confidence_is_normalized_to_fraction(monkeypatch):
     assert result.confidence == 0.6
 
 
-def test_null_document_type_returns_none(monkeypatch):
+def test_null_document_type_becomes_partial_verdict(monkeypatch):
+    # bielik potrafi zwrocic documentType=null wbrew promptowi; taki werdykt
+    # nie moze decydowac o podziale, ale isFirstPage i sugerowane frazy
+    # sa cenne dla operatora i nie moga przepadac
     content = (
         '{"isFirstPage": true, "documentType": null, "isKnownType": false,'
-        ' "confidence": 0.9, "reasonCodes": [], "suggestedNewPatterns": []}'
+        ' "confidence": 0.0, "reasonCodes": [],'
+        ' "suggestedNewPatterns": ["wniosek o dofinansowanie"]}'
     )
 
     def fake_post(url, json=None, timeout=None):
@@ -140,7 +144,12 @@ def test_null_document_type_returns_none(monkeypatch):
     monkeypatch.setattr(llm_module.requests, "post", fake_post)
     classifier = OpenAiCompatibleLlmClassifier("http://llm:1234/v1", "model-x")
 
-    assert classifier.classify_uncertain_page("tekst", "", "", []) is None
+    result = classifier.classify_uncertain_page("tekst", "", "", [])
+
+    assert result is not None
+    assert result.documentType == ""
+    assert result.isFirstPage is True
+    assert result.suggestedNewPatterns == ["wniosek o dofinansowanie"]
 
 
 def test_plain_json_response_still_parses(monkeypatch):

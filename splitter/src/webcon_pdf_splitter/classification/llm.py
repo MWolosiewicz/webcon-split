@@ -89,8 +89,10 @@ class OpenAiCompatibleLlmClassifier:
         content = response.json()["choices"][0]["message"]["content"]
         data = json.loads(extract_json_object(content))
         if not data.get("documentType"):
-            logger.info("LLM returned no documentType; treating the verdict as unusable")
-            return None
+            # werdykt bez typu nie moze decydowac o podziale, ale isFirstPage
+            # i sugerowane frazy sa cenne jako podpowiedz dla operatora
+            logger.info("LLM returned no documentType; keeping the verdict only as a hint")
+            data["documentType"] = ""
         confidence = data.get("confidence")
         if isinstance(confidence, (int, float)) and confidence > 1:
             # niektore modele zwracaja procenty zamiast ulamka 0-1

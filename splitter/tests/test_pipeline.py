@@ -390,6 +390,53 @@ def test_review_reasons_for_low_confidence_document():
     ]
 
 
+def test_review_reasons_for_partial_llm_verdict_without_type():
+    stub = _StubLlm(
+        responses={
+            "strona bez zadnych fraz": LlmClassification(
+                isFirstPage=True,
+                documentType="",
+                isKnownType=False,
+                confidence=0.0,
+                suggestedNewPatterns=["wniosek o dofinansowanie"],
+            )
+        }
+    )
+    result = _make_pipeline(llm_classifier=stub).split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "strona bez zadnych fraz"],
+    )
+
+    doc = result.documents[0]
+    assert doc.requiresReview is True
+    assert doc.reviewReasons == [
+        "strona 2 doklejona bez dopasowania do wzorca "
+        "(zadna fraza nie pasuje; LLM: prawdopodobnie poczatek nowego dokumentu "
+        "nieznanego typu, sugerowane frazy: 'wniosek o dofinansowanie')"
+    ]
+
+
+def test_partial_llm_verdict_never_creates_segment_even_with_high_confidence():
+    stub = _StubLlm(
+        responses={
+            "strona bez zadnych fraz": LlmClassification(
+                isFirstPage=True,
+                documentType="",
+                isKnownType=False,
+                confidence=0.95,
+            )
+        }
+    )
+    result = _make_pipeline(llm_classifier=stub).split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "strona bez zadnych fraz"],
+    )
+
+    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
+        ("Umowa o prace", 1, 2),
+    ]
+
+
 def test_review_reasons_for_unknown_document():
     result = _make_pipeline().split_pages("scan.pdf", ["obca 1", "obca 2"])
 

@@ -80,7 +80,7 @@ class ClassificationPipeline:
                 continue
 
             llm = self._try_llm(page_texts, index, known_types)
-            if llm is not None and llm.confidence >= self._min_review_confidence:
+            if llm is not None and llm.documentType and llm.confidence >= self._min_review_confidence:
                 if llm.isFirstPage:
                     current = _Segment(
                         document_type=llm.documentType,
@@ -262,11 +262,16 @@ class ClassificationPipeline:
         else:
             parts = ["zadna fraza nie pasuje"]
         if page.llm is not None:
-            kind = "typ" if page.llm.isKnownType else "nowy typ"
-            detail = (
-                f"LLM proponuje {kind}: '{page.llm.documentType}' "
-                f"(pewnosc {page.llm.confidence:.2f})"
-            )
+            if page.llm.documentType:
+                kind = "typ" if page.llm.isKnownType else "nowy typ"
+                detail = (
+                    f"LLM proponuje {kind}: '{page.llm.documentType}' "
+                    f"(pewnosc {page.llm.confidence:.2f})"
+                )
+            elif page.llm.isFirstPage:
+                detail = "LLM: prawdopodobnie poczatek nowego dokumentu nieznanego typu"
+            else:
+                detail = "LLM: typ nieustalony"
             if page.llm.suggestedNewPatterns:
                 suggested = ", ".join(f"'{p}'" for p in page.llm.suggestedNewPatterns[:3])
                 detail += f", sugerowane frazy: {suggested}"
