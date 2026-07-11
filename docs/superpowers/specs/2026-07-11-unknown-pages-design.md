@@ -1,5 +1,16 @@
 # Obsluga nierozpoznanych stron i fallback LLM - Design
 
+> **REWIZJA 2026-07-11 (po wdrozeniu):** produkcyjnie potwierdzono, ze strony
+> kontynuacji czesto nie zawieraja zadnej frazy swojego typu (frazy opisuja
+> pierwsze strony), a frazy roznych typow nakladaja sie w naturalnym jezyku
+> umow - deterministyczne powinowactwo fraz nie wystarcza jako jedyny sygnal.
+> Zmiana zachowania (sekcja "Rewizja: doklejanie z flaga" na koncu): gdy LLM
+> jest wylaczony/niepewny, strona bez powinowactwa NIE otwiera serii nieznanej,
+> jesli istnieje otwarty dokument rozpoznany - jest do niego doklejana,
+> a dokument dostaje wymuszone `requiresReview: true`. Serie nieznane wystepuja
+> odtad wylacznie przed pierwszym rozpoznanym dokumentem. LLM pozostaje
+> wlasciwym mechanizmem rozdzielania obcych wtracen.
+
 ## Cel
 
 Nierozpoznane strony i zakresy stron maja byc poprawnie obslugiwane w kazdym
@@ -156,3 +167,33 @@ Pipeline (jednostkowe, na tekstach stron, LLM jako stub):
   zaktualizowany do nowego kontraktu (wzorce dostaja frazy, strony
   kontynuacji je zawieraja) - jego dotychczasowa postac (kontynuacja bez
   zadnej frazy) opisuje wlasnie zachowanie, ktore celowo zmieniamy.
+
+## Rewizja: doklejanie z flaga (2026-07-11)
+
+Drabinka decyzyjna dla strony niebedacej pierwsza strona:
+
+1. powinowactwo do typu otwartego dokumentu rozpoznanego -> kontynuacja
+   (bez zmian);
+2. LLM (gdy wlaczony) -> werdykt jak w sekcji "Fallback LLM" (bez zmian);
+3. **nowosc:** brak powinowactwa i brak pewnego werdyktu LLM:
+   - jesli otwarty segment to dokument rozpoznany -> strona jest doklejana
+     do niego, segment dostaje wymuszone `requiresReview: true` (niezaleznie
+     od pewnosci pierwszej strony), sygnal `glued_unknown_page:<nr>` oraz
+     wpis w warnings: "Strona <nr>: brak dopasowania - doklejona do
+     dokumentu '<typ>', wymagana weryfikacja";
+   - jesli nie ma otwartego dokumentu rozpoznanego (poczatek paczki albo
+     trwajaca seria nieznana) -> seria "Nieznany typ dokumentu" jak dotad.
+
+Konsekwencje:
+
+- serie nieznane wystepuja wylacznie na poczatku paczki (przed pierwszym
+  rozpoznanym dokumentem) oraz gdy cala paczka jest nierozpoznana;
+- bez LLM obce wtracenie w srodku/na koncu laduje w pliku poprzedniego
+  dokumentu, ale dokument nigdy nie przejdzie auto-akceptacji - operator
+  rozdziela recznie przy weryfikacji;
+- z wlaczonym LLM obce wtracenia sa rozdzielane werdyktem modelu
+  (isFirstPage=true), a kontynuacje bez fraz potwierdzane
+  (isFirstPage=false + zgodny typ);
+- testy grupowania "wtracenie w srodku" i "nieznany ogon" zmieniaja
+  oczekiwania na doklejanie z flaga; separacja wtracen jest testowana
+  ze stubem LLM.
