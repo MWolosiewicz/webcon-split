@@ -11,12 +11,25 @@ splitter łączy się bezpośrednio z SQL Serverem.
 | Zmienna | Wymagana | Opis |
 |---|---|---|
 | `SPLITTER_DATABASE_CONNECTION_STRING` | tak (produkcyjnie) | ODBC do bazy `WebconPdfSplitter`; bez niej serwis działa na pustej liście wzorców (wszystko → "Nieznany typ dokumentu") |
+| `SPLITTER_WEBCON_DB_CONNECTION_STRING` | dla trybu słownika WEBCON | ODBC do bazy treści WEBCON (konto tylko-odczyt); razem z ID typu formularza włącza odczyt wzorców ze słownika WEBCON zamiast tabel własnych |
+| `SPLITTER_WEBCON_DICT_FORM_TYPE_ID` | dla trybu słownika WEBCON | ID typu formularza procesu słownikowego (`WFD_DTYPEID`) |
+| `SPLITTER_WEBCON_DICT_COL_TYPE_NAME` | dla trybu słownika WEBCON | kolumna nagłówka z nazwą typu, np. `WFD_AttText1` |
+| `SPLITTER_WEBCON_DICT_COL_TYPE_ACTIVE` | dla trybu słownika WEBCON | kolumna nagłówka z flagą aktywności typu, np. `WFD_AttBool1` |
+| `SPLITTER_WEBCON_DICT_COL_PATTERN_HEADER` | dla trybu słownika WEBCON | kolumna listy pozycji z nagłówkiem wzorca, np. `DET_Att1` |
+| `SPLITTER_WEBCON_DICT_COL_PATTERN_PHRASES` | dla trybu słownika WEBCON | kolumna listy pozycji z frazami (średniki), np. `DET_Att2` |
+| `SPLITTER_WEBCON_DICT_COL_PATTERN_EXCLUDED` | dla trybu słownika WEBCON | kolumna listy pozycji z frazami wykluczającymi, np. `DET_Att3` |
+| `SPLITTER_WEBCON_DICT_COL_PATTERN_WEIGHT` | dla trybu słownika WEBCON | kolumna listy pozycji z wagą, np. `DET_Value1` |
+| `SPLITTER_WEBCON_DICT_COL_PATTERN_ACTIVE` | dla trybu słownika WEBCON | kolumna listy pozycji z flagą aktywności wzorca, np. `DET_Bool1` |
 | `SPLITTER_API_TOKEN` | zalecane | Wymusza `Authorization: Bearer <token>` na `/api/split` i `/api/feedback` |
 | `SPLITTER_WORK_DIR` | nie | Katalog roboczy plików tymczasowych (w kontenerze: `/app/work`) |
 | `SPLITTER_MIN_AUTO_ACCEPT_CONFIDENCE` | nie (0.90) | Próg automatycznej akceptacji |
 | `SPLITTER_MIN_REVIEW_CONFIDENCE` | nie (0.70) | Próg kierowania do weryfikacji |
 | `SPLITTER_LLM_ENABLED` | nie (false) | Włącza fallback LLM (wymaga endpointu) |
 | `SPLITTER_LLM_ENDPOINT`, `SPLITTER_LLM_MODEL` | nie | Lokalny endpoint zgodny z OpenAI Chat Completions (Ollama/vLLM) |
+
+Konfiguracja słownika WEBCON: patrz `docs/deployment/webcon-dictionary.md`.
+Tryb słownika WEBCON ma pierwszeństwo przed `SPLITTER_DATABASE_CONNECTION_STRING`
+przy odczycie wzorców; tabele własne pozostają używane dla jobów i feedbacku.
 
 Przykładowy connection string (logowanie SQL):
 
