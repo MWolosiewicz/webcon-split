@@ -112,8 +112,12 @@ procesu ma pierwszeństwo przed plikiem).
 
 Fallback LLM pomaga klasyfikować wyłącznie strony, których nie rozpoznały
 reguły i powinowactwo fraz — wielostronicowe dokumenty ze znanymi frazami
-nie generują żadnych wywołań. Bez LLM strony nierozpoznane trafiają jako
-osobne dokumenty "Nieznany typ dokumentu" do ręcznej weryfikacji.
+nie generują żadnych wywołań. Bez LLM strona nierozpoznana jest doklejana
+do bieżącego dokumentu, który dostaje wtedy wymuszoną flagę weryfikacji
+(nigdy nie przejdzie auto-akceptacji); osobnym dokumentem "Nieznany typ
+dokumentu" stają się tylko strony sprzed pierwszego rozpoznanego dokumentu.
+Dopiero LLM potrafi rozdzielić obce wtrącenie w środku paczki na osobny
+dokument — bez niego rozdziela je operator przy weryfikacji.
 
 Wymagany jest lokalny serwer zgodny z OpenAI Chat Completions — splitter go
 nie uruchamia. Przykład (Ollama jako kontener na tym samym hoście):
