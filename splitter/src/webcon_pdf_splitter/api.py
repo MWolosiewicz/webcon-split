@@ -4,14 +4,17 @@ from tempfile import TemporaryDirectory
 from uuid import uuid4
 
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
+from pydantic import TypeAdapter, ValidationError
 
 from webcon_pdf_splitter.classification.llm import DisabledLlmClassifier
 from webcon_pdf_splitter.classification.pipeline import ClassificationPipeline
 from webcon_pdf_splitter.classification.rules import RuleBasedClassifier
 from webcon_pdf_splitter.config import SplitterSettings
-from webcon_pdf_splitter.contracts import FeedbackRequest, SplitResult
+from webcon_pdf_splitter.contracts import FeedbackRequest, PatternPayload, SplitResult
 from webcon_pdf_splitter.db.repository import (
+    DocumentPattern,
     FeedbackEntry,
+    InMemoryPatternRepository,
     SplitterJob,
     build_feedback_repository,
     build_job_repository,
@@ -33,6 +36,27 @@ def _require_token(settings: SplitterSettings, authorization: str | None) -> Non
         return
     if authorization != f"Bearer {settings.api_token}":
         raise HTTPException(status_code=401, detail="Invalid or missing API token")
+
+
+_PATTERNS_ADAPTER = TypeAdapter(list[PatternPayload])
+
+
+def parse_patterns_field(raw: str) -> list[DocumentPattern]:
+    try:
+        payloads = _PATTERNS_ADAPTER.validate_json(raw)
+    except ValidationError as exc:
+        raise ValueError(f"Invalid patterns payload: {exc}") from exc
+    return [
+        DocumentPattern(
+            document_type=payload.documentType,
+            header=payload.header,
+            phrases=payload.phrases,
+            excluded_phrases=payload.excludedPhrases,
+            weight=payload.weight,
+            active=True,
+        )
+        for payload in payloads
+    ]
 
 
 @app.get("/health")

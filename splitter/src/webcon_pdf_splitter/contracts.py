@@ -11,6 +11,14 @@ class SplitRequest(BaseModel):
     webconElementId: int | None = None
 
 
+class PatternPayload(BaseModel):
+    documentType: str
+    header: str
+    phrases: list[str] = Field(default_factory=list)
+    excludedPhrases: list[str] = Field(default_factory=list)
+    weight: float = 1.0
+
+
 class DetectedDocument(BaseModel):
     documentIndex: int = Field(ge=1)
     documentType: str
