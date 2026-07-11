@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -9,6 +11,8 @@ using WebCon.WorkFlow.SDK.ActionPlugins.Model;
 using WebCon.WorkFlow.SDK.Documents;
 using WebCon.WorkFlow.SDK.Documents.Model;
 using WebCon.WorkFlow.SDK.Documents.Model.Attachments;
+using WebCon.WorkFlow.SDK.Tools.Data;
+using WebCon.WorkFlow.SDK.Tools.Data.Model;
 
 namespace WebconPdfSplitterAction;
 
@@ -22,6 +26,11 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
             var targetDocTypeId = ParseId(Configuration.TargetDocTypeId, "Target document type ID");
             var startPathId = ParseId(Configuration.StartPathId, "Start path ID");
 
+            var patterns = await LoadPatternsAsync(args);
+            var patternsWarning = patterns.Count == 0
+                ? "Warning: patterns data source returned no rows; every page will be classified as unknown. "
+                : "";
+
             var sourceAttachment = await GetSingleSourcePdfAsync(args);
             var pdfContent = await sourceAttachment.GetContentAsync();
 
@@ -32,7 +41,8 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
                 result = await client.SplitAsync(
                     sourceAttachment.FileName,
                     new MemoryStream(pdfContent),
-                    args.Context.CurrentDocument.ID);
+                    args.Context.CurrentDocument.ID,
+                    patterns);
             }
 
             var documentsManager = new DocumentsManager(args.Context);
@@ -61,6 +71,7 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
             }
 
             args.LogMessage =
+                patternsWarning +
                 $"Splitter job {result.JobId}: {result.Status}, pages: {result.PageCount}, " +
                 $"documents: {result.Documents.Count}, created elements: {string.Join(", ", createdIds)}";
         }
@@ -102,4 +113,43 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
     private static string FormatDetectionComment(DetectedDocument detected) =>
         $"Type: {detected.DocumentType}; pages {detected.StartPage}-{detected.EndPage}; " +
         $"confidence {detected.Confidence:0.00}; requires review: {detected.RequiresReview}";
+
+    private async Task<List<PatternPayload>> LoadPatternsAsync(RunCustomActionParams args)
+    {
+        var helper = new DataSourcesHelper(args.Context);
+        var table = await helper.GetDataTableFromDataSourceAsync(
+            new GetDataTableFromDataSourceParams(Configuration.PatternsDataSourceId, null));
+
+        var required = new[] { "DocumentType", "Header", "Phrases", "ExcludedPhrases", "Weight" };
+        var missing = required.Where(column => !table.Columns.Contains(column)).ToList();
+        if (missing.Count > 0)
+            throw new InvalidOperationException(
+                $"Patterns data source {Configuration.PatternsDataSourceId} is missing required columns: " +
+                $"{string.Join(", ", missing)}. Expected columns: {string.Join(", ", required)}.");
+
+        var patterns = new List<PatternPayload>();
+        foreach (DataRow row in table.Rows)
+        {
+            var header = (row["Header"] as string)?.Trim();
+            if (string.IsNullOrEmpty(header))
+                continue;
+
+            patterns.Add(new PatternPayload
+            {
+                DocumentType = (row["DocumentType"] as string)?.Trim() ?? "",
+                Header = header!,
+                Phrases = SplitPhrases(row["Phrases"]),
+                ExcludedPhrases = SplitPhrases(row["ExcludedPhrases"]),
+                Weight = row["Weight"] == DBNull.Value || row["Weight"] == null
+                    ? 1.0
+                    : Convert.ToDouble(row["Weight"], CultureInfo.InvariantCulture),
+            });
+        }
+        return patterns;
+    }
+
+    private static List<string> SplitPhrases(object? value) =>
+        value is string text
+            ? text.Split(';').Select(phrase => phrase.Trim()).Where(phrase => phrase.Length > 0).ToList()
+            : new List<string>();
 }
