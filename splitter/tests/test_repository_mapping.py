@@ -1,4 +1,4 @@
-from webcon_pdf_splitter.db.repository import DocumentPattern, InMemoryPatternRepository
+from webcon_pdf_splitter.patterns import DocumentPattern, InMemoryPatternRepository
 
 
 def test_in_memory_repository_returns_only_active_patterns():

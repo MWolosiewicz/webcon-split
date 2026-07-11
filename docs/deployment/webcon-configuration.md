@@ -79,9 +79,6 @@ Oryginalny PDF nigdy nie jest modyfikowany ani usuwany.
 
 ## Feedback operatora
 
-Po korekcie operatora (zmiana typu / granic) formularz lub akcja techniczna
-powinna wywołać `POST /api/feedback` splittera z kompletem pól:
-`jobId`, `webconElementId`, `pageNumber`, `systemDocumentType`,
-`operatorDocumentType`, `systemIsFirstPage`, `operatorIsFirstPage`,
-`operatorLogin`. Wpisy trafiają do `dbo.classification_feedback` i będą
-podstawą aktualizacji wzorców.
+Pętla uczenia z korekt operatora jest zaplanowana, ale nie zaimplementowana.
+Splitter nie ma endpointu feedbacku ani bazy danych — gdy pętla powstanie,
+korekty będą zbierane po stronie WEBCON (np. w słowniku wzorców).

@@ -1,5 +1,5 @@
 from webcon_pdf_splitter.classification.rules import RuleBasedClassifier
-from webcon_pdf_splitter.db.repository import DocumentPattern
+from webcon_pdf_splitter.patterns import DocumentPattern
 
 
 def _classifier_with_header(header: str) -> RuleBasedClassifier:

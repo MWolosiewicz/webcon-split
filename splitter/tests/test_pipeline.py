@@ -3,7 +3,7 @@ import logging
 from webcon_pdf_splitter.classification.llm import DisabledLlmClassifier, LlmClassification
 from webcon_pdf_splitter.classification.pipeline import ClassificationPipeline
 from webcon_pdf_splitter.classification.rules import RuleBasedClassifier
-from webcon_pdf_splitter.db.repository import DocumentPattern
+from webcon_pdf_splitter.patterns import DocumentPattern
 
 
 def test_pipeline_groups_pages_between_detected_first_pages():

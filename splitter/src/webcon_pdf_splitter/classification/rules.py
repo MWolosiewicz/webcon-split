@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 import re
 import unicodedata
 
-from webcon_pdf_splitter.db.repository import DocumentPattern
+from webcon_pdf_splitter.patterns import DocumentPattern
 
 
 @dataclass(frozen=True)

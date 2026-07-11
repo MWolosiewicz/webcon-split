@@ -7,10 +7,8 @@ services:
     ports:
       # port hosta 8010 (8000 zajmuje kontener pdf-processor); w kontenerze serwis slucha na 8000
       - "8010:8000"
-    # Zmienne (m.in. SPLITTER_DATABASE_CONNECTION_STRING, SPLITTER_API_TOKEN)
-    # czytane sa z pliku .env obok tego compose. Na maszynie deweloperskiej
-    # dodatkowo dziala docker-compose.override.yml (poza gitem) z wariantem
-    # .env.docker - patrz docs/deployment/splitter-service.md
+    # Zmienne (m.in. SPLITTER_API_TOKEN, SPLITTER_LOG_LEVEL) czytane sa
+    # z pliku .env obok tego compose - patrz docs/deployment/splitter-service.md
     env_file:
       - .env
     healthcheck:

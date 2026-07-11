@@ -7,7 +7,6 @@ from pypdf import PdfWriter
 
 from webcon_pdf_splitter import api
 from webcon_pdf_splitter.api import app, parse_patterns_field
-from webcon_pdf_splitter.db.repository import InMemoryPatternRepository
 
 
 def test_parse_patterns_field_builds_document_patterns():
@@ -90,11 +89,6 @@ def test_split_uses_patterns_from_request(monkeypatch):
         "PdfTextOcrEngine",
         lambda: _StubOcr(["UMOWA O PRACE zawarta pomiedzy pracodawca a pracownikiem"]),
     )
-    monkeypatch.setattr(
-        api,
-        "build_pattern_repository",
-        lambda settings: (_ for _ in ()).throw(AssertionError("factory must not be called")),
-    )
     client = TestClient(app)
 
     response = client.post(
@@ -106,16 +100,10 @@ def test_split_uses_patterns_from_request(monkeypatch):
     assert response.status_code == 200
     body = response.json()
     assert body["documents"][0]["documentType"] == "Umowa o prace"
+    assert body["jobId"]
 
 
-def test_split_without_patterns_falls_back_to_factory(monkeypatch):
-    calls = []
-
-    def factory(settings):
-        calls.append(settings)
-        return InMemoryPatternRepository(patterns=[])
-
-    monkeypatch.setattr(api, "build_pattern_repository", factory)
+def test_split_without_patterns_classifies_all_as_unknown():
     client = TestClient(app)
 
     response = client.post(
@@ -124,7 +112,6 @@ def test_split_without_patterns_falls_back_to_factory(monkeypatch):
     )
 
     assert response.status_code == 200
-    assert len(calls) == 1
     assert response.json()["documents"][0]["documentType"] == "Nieznany typ dokumentu"
 
 

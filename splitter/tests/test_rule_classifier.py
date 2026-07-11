@@ -1,5 +1,5 @@
 from webcon_pdf_splitter.classification.rules import RuleBasedClassifier
-from webcon_pdf_splitter.db.repository import DocumentPattern
+from webcon_pdf_splitter.patterns import DocumentPattern
 
 
 def test_classifier_detects_known_header_as_first_page():

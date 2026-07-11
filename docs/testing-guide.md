@@ -1,15 +1,15 @@
 # Przewodnik testowania krok po kroku
 
-## Poziom 1: Testy jednostkowe (bez bazy, bez WEBCON)
+## Poziom 1: Testy jednostkowe (bez WEBCON)
 
 ```powershell
 cd splitter
 python -m pytest tests/ -v
 ```
 
-Oczekiwane: 15 testów przechodzi.
+Oczekiwane: wszystkie testy przechodzą.
 
-## Poziom 2: Serwis lokalnie, bez bazy
+## Poziom 2: Serwis lokalnie, bez wzorców
 
 Wygeneruj testowa paczke (5 stron: umowa 2 str., aneks 1 str., swiadectwo 2 str.):
 
@@ -32,33 +32,22 @@ curl.exe -s http://127.0.0.1:8000/health
 curl.exe -s -X POST http://127.0.0.1:8000/api/split -F "file=@test_bundle.pdf"
 ```
 
-Oczekiwane bez bazy: wszystkie strony jako jeden dokument
+Oczekiwane bez wzorców: wszystkie strony jako jeden dokument
 `Nieznany typ dokumentu` z `requiresReview: true` — to poprawne,
 bo lista wzorcow jest pusta.
 
-## Poziom 3: Serwis z baza wzorcow (SQL Server)
+## Poziom 3: Wzorce w żądaniu
 
-Na serwerze SQL (SSMS lub sqlcmd):
-
-```sql
-CREATE DATABASE WebconPdfSplitter;
-```
-
-Nastepnie na bazie `WebconPdfSplitter` wykonaj kolejno:
-
-1. `splitter/src/webcon_pdf_splitter/db/schema.sql`
-2. `splitter/src/webcon_pdf_splitter/db/seed.sql`
-
-Sprawdz: `SELECT name FROM dbo.document_type;` — 10 typow.
-
-Uruchom serwis ze wskazaniem bazy:
+W produkcji wzorce wysyła akcja WEBCON (pole formularza `patterns`,
+dane ze słownika — patrz `docs/deployment/webcon-dictionary.md`).
+Lokalnie można je podać ręcznie:
 
 ```powershell
-$env:SPLITTER_DATABASE_CONNECTION_STRING = "Driver={ODBC Driver 18 for SQL Server};Server=TWOJ_SERWER;Database=WebconPdfSplitter;Trusted_Connection=yes;TrustServerCertificate=yes"
-python -m uvicorn webcon_pdf_splitter.api:app --host 127.0.0.1 --port 8000
+'[{"documentType":"Umowa o prace","header":"UMOWA O PRACE","phrases":["pracodawca","pracownik"]},{"documentType":"Aneks do umowy o prace","header":"ANEKS DO UMOWY O PRACE"},{"documentType":"Swiadectwo pracy","header":"SWIADECTWO PRACY"}]' | Set-Content -Encoding ascii patterns.json
+curl.exe -s -X POST http://127.0.0.1:8000/api/split -F "file=@test_bundle.pdf" -F "patterns=<patterns.json"
 ```
 
-Wyslij ponownie `test_bundle.pdf`. Oczekiwane: 3 dokumenty —
+Oczekiwane: 3 dokumenty —
 `Umowa o prace` (strony 1-2), `Aneks do umowy o prace` (strona 3),
 `Swiadectwo pracy` (strony 4-5), kazdy z `confidence: 0.99`,
 `requiresReview: false` i wypelnionym `fileContentBase64`.
