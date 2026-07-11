@@ -6,7 +6,11 @@ from uuid import uuid4
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from pydantic import TypeAdapter, ValidationError
 
-from webcon_pdf_splitter.classification.llm import DisabledLlmClassifier
+from webcon_pdf_splitter.classification.llm import (
+    DisabledLlmClassifier,
+    LlmClassifier,
+    OpenAiCompatibleLlmClassifier,
+)
 from webcon_pdf_splitter.classification.pipeline import ClassificationPipeline
 from webcon_pdf_splitter.classification.rules import RuleBasedClassifier
 from webcon_pdf_splitter.config import SplitterSettings
@@ -57,6 +61,16 @@ def parse_patterns_field(raw: str) -> list[DocumentPattern]:
         )
         for payload in payloads
     ]
+
+
+def build_llm_classifier(settings: SplitterSettings) -> LlmClassifier:
+    if settings.llm_enabled and settings.llm_endpoint and settings.llm_model:
+        return OpenAiCompatibleLlmClassifier(
+            endpoint=settings.llm_endpoint,
+            model=settings.llm_model,
+            timeout_seconds=settings.llm_timeout_seconds,
+        )
+    return DisabledLlmClassifier()
 
 
 @app.get("/health")
@@ -115,7 +129,7 @@ async def _split(
         repository = build_pattern_repository(settings)
     pipeline = ClassificationPipeline(
         rule_classifier=RuleBasedClassifier(repository.list_active_patterns()),
-        llm_classifier=DisabledLlmClassifier(),
+        llm_classifier=build_llm_classifier(settings),
         min_auto_accept_confidence=settings.min_auto_accept_confidence,
         min_review_confidence=settings.min_review_confidence,
     )
