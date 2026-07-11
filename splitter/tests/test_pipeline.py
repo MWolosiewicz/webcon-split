@@ -257,9 +257,11 @@ def test_logs_page_decisions_and_summary(caplog):
         m.startswith("Strona 1: pierwsza strona 'Umowa o prace' (regula, confidence")
         for m in messages
     )
-    assert (
-        "Strona 2: brak dopasowania -> doklejona do 'Umowa o prace', wymuszona weryfikacja"
-        in messages
+    assert any(
+        m.startswith(
+            "Strona 2: brak dopasowania -> doklejona do 'Umowa o prace', wymuszona weryfikacja"
+        )
+        for m in messages
     )
     assert any(
         m.startswith("Dokument 1: 'Umowa o prace', strony 1-2,") and "weryfikacja: TAK" in m
@@ -290,7 +292,9 @@ def test_logs_llm_and_unknown_decisions(caplog):
         )
 
     messages = [record.getMessage() for record in caplog.records]
-    assert "Strona 1: brak dopasowania -> nowy nieznany segment" in messages
+    assert any(
+        m.startswith("Strona 1: brak dopasowania -> nowy nieznany segment") for m in messages
+    )
     assert (
         "Strona 3: LLM -> pierwsza strona 'Pismo przewodnie' (confidence 0.85, reasonCodes: layout)"
         in messages
@@ -315,7 +319,51 @@ def test_review_reasons_for_glued_page():
 
     doc = result.documents[0]
     assert doc.requiresReview is True
-    assert doc.reviewReasons == ["strona 2 doklejona bez dopasowania do wzorca"]
+    assert doc.reviewReasons == [
+        "strona 2 doklejona bez dopasowania do wzorca "
+        "(zadna fraza nie pasuje; LLM bez werdyktu)"
+    ]
+
+
+def test_review_reasons_for_glued_page_include_phrase_affinities():
+    result = _make_pipeline().split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "okres zatrudnienia wynosil trzy lata"],
+    )
+
+    doc = result.documents[0]
+    assert doc.requiresReview is True
+    assert doc.reviewReasons == [
+        "strona 2 doklejona bez dopasowania do wzorca "
+        "(frazy pasuja do: 'Swiadectwo pracy'; LLM bez werdyktu)"
+    ]
+
+
+def test_review_reasons_for_glued_page_include_llm_proposal():
+    stub = _StubLlm(
+        responses={
+            "strona bez zadnych fraz": LlmClassification(
+                isFirstPage=True,
+                documentType="Wniosek o dofinansowanie okularow",
+                isKnownType=False,
+                confidence=0.50,
+                suggestedNewPatterns=["WNIOSEK O DOFINANSOWANIE"],
+            )
+        }
+    )
+    result = _make_pipeline(llm_classifier=stub).split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "strona bez zadnych fraz"],
+    )
+
+    doc = result.documents[0]
+    assert doc.requiresReview is True
+    assert doc.reviewReasons == [
+        "strona 2 doklejona bez dopasowania do wzorca "
+        "(zadna fraza nie pasuje; LLM proponuje nowy typ: "
+        "'Wniosek o dofinansowanie okularow' (pewnosc 0.50), "
+        "sugerowane frazy: 'WNIOSEK O DOFINANSOWANIE')"
+    ]
 
 
 def test_review_reasons_for_low_confidence_document():
@@ -349,6 +397,8 @@ def test_review_reasons_for_unknown_document():
     assert doc.requiresReview is True
     assert doc.reviewReasons == [
         "nierozpoznany typ dokumentu (zadna regula nie pasowala)",
+        "strona 1: zadna fraza nie pasuje; LLM bez werdyktu",
+        "strona 2: zadna fraza nie pasuje; LLM bez werdyktu",
         "pewnosc 0.20 ponizej progu auto-akceptacji 0.90",
     ]
 

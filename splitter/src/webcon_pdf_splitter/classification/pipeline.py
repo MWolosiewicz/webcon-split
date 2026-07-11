@@ -11,6 +11,13 @@ UNKNOWN_DOCUMENT_TYPE = "Nieznany typ dokumentu"
 
 
 @dataclass
+class _UnmatchedPage:
+    page_number: int
+    phrase_affinities: list[str]
+    llm: LlmClassification | None
+
+
+@dataclass
 class _Segment:
     document_type: str
     confidence: float
@@ -19,7 +26,7 @@ class _Segment:
     end_page: int
     known: bool
     forced_review: bool = False
-    glued_pages: list[int] = field(default_factory=list)
+    unmatched_pages: list[_UnmatchedPage] = field(default_factory=list)
 
 
 class ClassificationPipeline:
@@ -102,20 +109,29 @@ class ClassificationPipeline:
                     )
                     continue
 
+            unmatched = _UnmatchedPage(
+                page_number=page_number,
+                phrase_affinities=sorted(page.phrase_affinities),
+                llm=llm,
+            )
             if current is not None and current.known:
                 current.end_page = page_number
                 current.forced_review = True
-                current.glued_pages.append(page_number)
+                current.unmatched_pages.append(unmatched)
                 current.signals.append(f"glued_unknown_page:{page_number}")
                 logger.info(
-                    "Strona %s: brak dopasowania -> doklejona do '%s', wymuszona weryfikacja",
+                    "Strona %s: brak dopasowania -> doklejona do '%s', wymuszona weryfikacja (%s)",
                     page_number,
                     current.document_type,
+                    self._unmatched_details(unmatched),
                 )
             elif current is not None and not current.known:
                 current.end_page = page_number
+                current.unmatched_pages.append(unmatched)
                 logger.info(
-                    "Strona %s: brak dopasowania -> kontynuacja nieznanego segmentu", page_number
+                    "Strona %s: brak dopasowania -> kontynuacja nieznanego segmentu (%s)",
+                    page_number,
+                    self._unmatched_details(unmatched),
                 )
             else:
                 current = _Segment(
@@ -125,10 +141,13 @@ class ClassificationPipeline:
                     start_page=page_number,
                     end_page=page_number,
                     known=False,
+                    unmatched_pages=[unmatched],
                 )
                 segments.append(current)
                 logger.info(
-                    "Strona %s: brak dopasowania -> nowy nieznany segment", page_number
+                    "Strona %s: brak dopasowania -> nowy nieznany segment (%s)",
+                    page_number,
+                    self._unmatched_details(unmatched),
                 )
 
         documents: list[DetectedDocument] = []
@@ -159,11 +178,12 @@ class ClassificationPipeline:
                 warnings.append(
                     f"Strony {segment.start_page}-{segment.end_page}: nierozpoznany dokument"
                 )
-            for page in segment.glued_pages:
-                warnings.append(
-                    f"Strona {page}: brak dopasowania - doklejona do dokumentu "
-                    f"'{segment.document_type}', wymagana weryfikacja"
-                )
+            if segment.known:
+                for page in segment.unmatched_pages:
+                    warnings.append(
+                        f"Strona {page.page_number}: brak dopasowania - doklejona do dokumentu "
+                        f"'{segment.document_type}', wymagana weryfikacja"
+                    )
 
         status = "requires_review" if any(document.requiresReview for document in documents) else "completed"
         for document in documents:
@@ -219,14 +239,41 @@ class ClassificationPipeline:
         reasons: list[str] = []
         if not segment.known:
             reasons.append("nierozpoznany typ dokumentu (zadna regula nie pasowala)")
-        for page in segment.glued_pages:
-            reasons.append(f"strona {page} doklejona bez dopasowania do wzorca")
+            for page in segment.unmatched_pages:
+                reasons.append(f"strona {page.page_number}: {self._unmatched_details(page)}")
+        else:
+            for page in segment.unmatched_pages:
+                reasons.append(
+                    f"strona {page.page_number} doklejona bez dopasowania do wzorca "
+                    f"({self._unmatched_details(page)})"
+                )
         if segment.confidence < self._min_auto_accept_confidence:
             reasons.append(
                 f"pewnosc {segment.confidence:.2f} ponizej progu auto-akceptacji "
                 f"{self._min_auto_accept_confidence:.2f}"
             )
         return reasons
+
+    @staticmethod
+    def _unmatched_details(page: _UnmatchedPage) -> str:
+        if page.phrase_affinities:
+            affinities = ", ".join(f"'{name}'" for name in page.phrase_affinities)
+            parts = [f"frazy pasuja do: {affinities}"]
+        else:
+            parts = ["zadna fraza nie pasuje"]
+        if page.llm is not None:
+            kind = "typ" if page.llm.isKnownType else "nowy typ"
+            detail = (
+                f"LLM proponuje {kind}: '{page.llm.documentType}' "
+                f"(pewnosc {page.llm.confidence:.2f})"
+            )
+            if page.llm.suggestedNewPatterns:
+                suggested = ", ".join(f"'{p}'" for p in page.llm.suggestedNewPatterns[:3])
+                detail += f", sugerowane frazy: {suggested}"
+            parts.append(detail)
+        else:
+            parts.append("LLM bez werdyktu")
+        return "; ".join(parts)
 
     @staticmethod
     def _file_name(index: int, document_type: str, start_page: int, end_page: int) -> str:
