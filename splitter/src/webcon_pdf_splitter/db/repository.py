@@ -124,6 +124,8 @@ class WebconDictionaryPatternRepository:
 
 
 def build_pattern_repository(settings: "SplitterSettings") -> PatternRepository:
+    if settings.webcon_db_connection_string and settings.webcon_dict_form_type_id:
+        return WebconDictionaryPatternRepository(settings)
     if settings.database_connection_string:
         return SqlServerPatternRepository(settings.database_connection_string)
     return InMemoryPatternRepository(patterns=[])
