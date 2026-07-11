@@ -132,3 +132,20 @@ def test_map_rows_skips_rows_with_empty_header():
 
     assert len(patterns) == 1
     assert patterns[0].header == "PRAWIDLOWY"
+
+
+def test_build_query_uses_mapped_columns_and_fixed_filters():
+    repository = WebconDictionaryPatternRepository(_webcon_settings())
+
+    query = repository._build_query()
+
+    assert "el.[WFD_AttText1]" in query
+    assert "det.[DET_Att1]" in query
+    assert "det.[DET_Att2]" in query
+    assert "det.[DET_Att3]" in query
+    assert "det.[DET_Value1]" in query
+    assert "el.[WFD_AttBool1] = 1" in query
+    assert "det.[DET_Bool1] = 1" in query
+    assert "WFD_DTYPEID = ?" in query
+    assert "WFD_IsDeleted = 0" in query
+    assert "JOIN dbo.WFElementDetails det ON det.DET_WFDID = el.WFD_ID" in query

@@ -75,6 +75,32 @@ class WebconDictionaryPatternRepository:
             )
         self._settings = settings
 
+    def _build_query(self) -> str:
+        s = self._settings
+        return f"""
+            SELECT el.[{s.webcon_dict_col_type_name}],
+                   det.[{s.webcon_dict_col_pattern_header}],
+                   det.[{s.webcon_dict_col_pattern_phrases}],
+                   det.[{s.webcon_dict_col_pattern_excluded}],
+                   det.[{s.webcon_dict_col_pattern_weight}]
+            FROM dbo.WFElements el
+            JOIN dbo.WFElementDetails det ON det.DET_WFDID = el.WFD_ID
+            WHERE el.WFD_DTYPEID = ?
+              AND el.WFD_IsDeleted = 0
+              AND el.[{s.webcon_dict_col_type_active}] = 1
+              AND det.[{s.webcon_dict_col_pattern_active}] = 1
+        """
+
+    def list_active_patterns(self) -> list[DocumentPattern]:
+        settings = self._settings
+        with pyodbc.connect(settings.webcon_db_connection_string) as connection:
+            rows = (
+                connection.cursor()
+                .execute(self._build_query(), settings.webcon_dict_form_type_id)
+                .fetchall()
+            )
+        return self._map_rows(rows)
+
     def _map_rows(self, rows) -> list[DocumentPattern]:
         patterns: list[DocumentPattern] = []
         for row in rows:
