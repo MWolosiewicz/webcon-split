@@ -151,4 +151,8 @@ Pipeline (jednostkowe, na tekstach stron, LLM jako stub):
   nieznana;
 - api: fabryka klasyfikatora LLM wg ustawien (enabled+endpoint+model ->
   OpenAiCompatible; inaczej Disabled);
-- istniejace testy API i pipeline'u przechodza bez zmian.
+- istniejace testy API przechodza bez zmian; test grupowania
+  `test_pipeline_groups_pages_between_detected_first_pages` jest
+  zaktualizowany do nowego kontraktu (wzorce dostaja frazy, strony
+  kontynuacji je zawieraja) - jego dotychczasowa postac (kontynuacja bez
+  zadnej frazy) opisuje wlasnie zachowanie, ktore celowo zmieniamy.
