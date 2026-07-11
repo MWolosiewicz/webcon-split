@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -20,12 +21,18 @@ public sealed class SplitterClient
         _apiToken = apiToken;
     }
 
-    public async Task<SplitResult> SplitAsync(string fileName, Stream pdfStream, int? webconElementId = null)
+    public async Task<SplitResult> SplitAsync(
+        string fileName,
+        Stream pdfStream,
+        int? webconElementId = null,
+        IReadOnlyList<PatternPayload>? patterns = null)
     {
         using var content = new MultipartFormDataContent();
         using var fileContent = new StreamContent(pdfStream);
         fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
         content.Add(fileContent, "file", fileName);
+        if (patterns != null)
+            content.Add(new StringContent(JsonConvert.SerializeObject(patterns)), "patterns");
 
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/api/split") { Content = content };
         if (!string.IsNullOrEmpty(_apiToken))

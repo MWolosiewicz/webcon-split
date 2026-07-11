@@ -25,3 +25,21 @@ public sealed class DetectedDocument
     public List<string> Signals { get; set; } = new();
     public Dictionary<string, object> Metadata { get; set; } = new();
 }
+
+public sealed class PatternPayload
+{
+    [Newtonsoft.Json.JsonProperty("documentType")]
+    public string DocumentType { get; set; } = "";
+
+    [Newtonsoft.Json.JsonProperty("header")]
+    public string Header { get; set; } = "";
+
+    [Newtonsoft.Json.JsonProperty("phrases")]
+    public List<string> Phrases { get; set; } = new();
+
+    [Newtonsoft.Json.JsonProperty("excludedPhrases")]
+    public List<string> ExcludedPhrases { get; set; } = new();
+
+    [Newtonsoft.Json.JsonProperty("weight")]
+    public double Weight { get; set; } = 1.0;
+}
