@@ -1,5 +1,9 @@
 # Slowniki typow dokumentow w WEBCON - Design
 
+> **ZASTAPIONY** przez `2026-07-11-patterns-in-request-design.md` - wzorce
+> przekazuje plugin SDK w zadaniu `/api/split`; splitter nie czyta bazy
+> tresci WEBCON.
+
 ## Cel
 
 Przeniesc zarzadzanie slownikami splittera (typy dokumentow i wzorce rozpoznawania)
