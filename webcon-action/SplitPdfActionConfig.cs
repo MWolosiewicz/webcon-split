@@ -76,4 +76,20 @@ public class SplitPdfActionConfig : PluginConfiguration
         IsRequired = true,
         Order = 7)]
     public int PatternsDataSourceId { get; set; }
+
+    [ConfigEditableFormFieldID(
+        DisplayName = "Requires review field ID",
+        Description = "Opcjonalne: pole formularza typu tak/nie w obiegu docelowym, w ktore akcja " +
+                      "zapisze, czy dokument wymaga weryfikacji operatora. " +
+                      "Zostaw puste, aby nie zapisywac.",
+        Order = 8)]
+    public int RequiresReviewFieldId { get; set; }
+
+    [ConfigEditableFormFieldID(
+        DisplayName = "Review reasons field ID",
+        Description = "Opcjonalne: pole tekstowe (najlepiej wieloliniowe) w obiegu docelowym, " +
+                      "w ktore akcja zapisze powody weryfikacji, jeden na linie. " +
+                      "Zostaw puste, aby nie zapisywac.",
+        Order = 9)]
+    public int ReviewReasonsFieldId { get; set; }
 }

@@ -32,6 +32,8 @@ Każde pole ma opis widoczny w Designer Studio; poniżej pełna ściąga.
 | Start path ID | tak | Ścieżka startowa obiegu Dokument HR (przejście z kroku startowego) | Designer Studio → krok startowy obiegu docelowego → ścieżka → właściwości → ID |
 | Patterns data source ID | tak | Źródło danych zwracające aktywne wzorce (kolumny: DocumentType, Header, Phrases, ExcludedPhrases, Weight) | Designer Studio → Źródła danych → właściwości → ID; szablon zapytania w `docs/deployment/webcon-dictionary.md` |
 | Timeout in seconds | nie (300) | Maksymalny czas oczekiwania na splitter | Zwiększ dla dużych paczek z OCR |
+| Requires review field ID | nie | Pole tak/nie w obiegu Dokument HR, w które akcja zapisuje `requiresReview` splittera | Designer Studio → atrybuty obiegu docelowego → właściwości pola → ID; puste = pomijane |
+| Review reasons field ID | nie | Pole tekstowe (wieloliniowe) w obiegu Dokument HR na powody weryfikacji (jeden na linię) | Designer Studio → atrybuty obiegu docelowego → właściwości pola → ID; puste = pomijane |
 
 ## Procesy
 

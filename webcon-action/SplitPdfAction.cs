@@ -65,6 +65,15 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
 
                 await newDocument.Comment.AddCommentAsync(FormatDetectionComment(detected));
 
+                if (Configuration.RequiresReviewFieldId > 0)
+                    await newDocument.SetFieldValueAsync(
+                        Configuration.RequiresReviewFieldId, detected.RequiresReview);
+
+                if (Configuration.ReviewReasonsFieldId > 0)
+                    await newDocument.SetFieldValueAsync(
+                        Configuration.ReviewReasonsFieldId,
+                        string.Join(Environment.NewLine, detected.ReviewReasons));
+
                 var started = await documentsManager.StartNewWorkFlowAsync(
                     new StartNewWorkFlowParams(newDocument, startPathId));
                 createdIds.Add(started.CreatedDocumentID);
