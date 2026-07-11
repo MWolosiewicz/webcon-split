@@ -53,11 +53,23 @@ class ClassificationPipeline:
                     end_page=page_number,
                     known=True,
                 )
+                logger.info(
+                    "Strona %s: pierwsza strona '%s' (regula, confidence %.2f, sygnaly: %s)",
+                    page_number,
+                    page.document_type,
+                    page.confidence,
+                    ", ".join(page.signals),
+                )
                 segments.append(current)
                 continue
 
             if current is not None and current.known and current.document_type in page.phrase_affinities:
                 current.end_page = page_number
+                logger.info(
+                    "Strona %s: kontynuacja '%s' (dopasowanie fraz)",
+                    page_number,
+                    current.document_type,
+                )
                 continue
 
             llm = self._try_llm(page_texts, index, known_types)
@@ -71,10 +83,23 @@ class ClassificationPipeline:
                         end_page=page_number,
                         known=True,
                     )
+                    logger.info(
+                        "Strona %s: LLM -> pierwsza strona '%s' (confidence %.2f, reasonCodes: %s)",
+                        page_number,
+                        llm.documentType,
+                        llm.confidence,
+                        ", ".join(llm.reasonCodes),
+                    )
                     segments.append(current)
                     continue
                 if current is not None and current.known and llm.documentType == current.document_type:
                     current.end_page = page_number
+                    logger.info(
+                        "Strona %s: LLM -> kontynuacja '%s' (confidence %.2f)",
+                        page_number,
+                        llm.documentType,
+                        llm.confidence,
+                    )
                     continue
 
             if current is not None and current.known:
@@ -82,8 +107,16 @@ class ClassificationPipeline:
                 current.forced_review = True
                 current.glued_pages.append(page_number)
                 current.signals.append(f"glued_unknown_page:{page_number}")
+                logger.info(
+                    "Strona %s: brak dopasowania -> doklejona do '%s', wymuszona weryfikacja",
+                    page_number,
+                    current.document_type,
+                )
             elif current is not None and not current.known:
                 current.end_page = page_number
+                logger.info(
+                    "Strona %s: brak dopasowania -> kontynuacja nieznanego segmentu", page_number
+                )
             else:
                 current = _Segment(
                     document_type=UNKNOWN_DOCUMENT_TYPE,
@@ -94,6 +127,9 @@ class ClassificationPipeline:
                     known=False,
                 )
                 segments.append(current)
+                logger.info(
+                    "Strona %s: brak dopasowania -> nowy nieznany segment", page_number
+                )
 
         documents: list[DetectedDocument] = []
         for document_index, segment in enumerate(segments, start=1):
@@ -130,6 +166,33 @@ class ClassificationPipeline:
                 )
 
         status = "requires_review" if any(document.requiresReview for document in documents) else "completed"
+        for document in documents:
+            if document.requiresReview:
+                logger.info(
+                    "Dokument %s: '%s', strony %s-%s, confidence %.2f, weryfikacja: TAK (powody: %s)",
+                    document.documentIndex,
+                    document.documentType,
+                    document.startPage,
+                    document.endPage,
+                    document.confidence,
+                    "; ".join(document.reviewReasons),
+                )
+            else:
+                logger.info(
+                    "Dokument %s: '%s', strony %s-%s, confidence %.2f, weryfikacja: NIE",
+                    document.documentIndex,
+                    document.documentType,
+                    document.startPage,
+                    document.endPage,
+                    document.confidence,
+                )
+        logger.info(
+            "Podzial '%s' zakonczony: %s stron, %s dokumentow, status=%s",
+            source_file_name,
+            len(page_texts),
+            len(documents),
+            status,
+        )
         return SplitResult(
             sourceFileName=source_file_name,
             pageCount=len(page_texts),

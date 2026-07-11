@@ -1,3 +1,5 @@
+import logging
+
 from webcon_pdf_splitter.classification.llm import DisabledLlmClassifier, LlmClassification
 from webcon_pdf_splitter.classification.pipeline import ClassificationPipeline
 from webcon_pdf_splitter.classification.rules import RuleBasedClassifier
@@ -241,6 +243,58 @@ def test_llm_low_confidence_glues_page_with_forced_review():
         ("Umowa o prace", 1, 2),
     ]
     assert result.documents[0].requiresReview is True
+
+
+def test_logs_page_decisions_and_summary(caplog):
+    with caplog.at_level(logging.INFO, logger="webcon_pdf_splitter.classification.pipeline"):
+        _make_pipeline().split_pages(
+            "scan.pdf",
+            ["UMOWA O PRACE zawarta z pracodawca", "obcy zalacznik bez fraz"],
+        )
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(
+        m.startswith("Strona 1: pierwsza strona 'Umowa o prace' (regula, confidence")
+        for m in messages
+    )
+    assert (
+        "Strona 2: brak dopasowania -> doklejona do 'Umowa o prace', wymuszona weryfikacja"
+        in messages
+    )
+    assert any(
+        m.startswith("Dokument 1: 'Umowa o prace', strony 1-2,") and "weryfikacja: TAK" in m
+        for m in messages
+    )
+    assert (
+        "Podzial 'scan.pdf' zakonczony: 2 stron, 1 dokumentow, status=requires_review"
+        in messages
+    )
+
+
+def test_logs_llm_and_unknown_decisions(caplog):
+    stub = _StubLlm(
+        responses={
+            "PISMO PRZEWODNIE tresc": LlmClassification(
+                isFirstPage=True,
+                documentType="Pismo przewodnie",
+                isKnownType=False,
+                confidence=0.85,
+                reasonCodes=["layout"],
+            )
+        }
+    )
+    with caplog.at_level(logging.INFO, logger="webcon_pdf_splitter.classification.pipeline"):
+        _make_pipeline(llm_classifier=stub).split_pages(
+            "scan.pdf",
+            ["obca strona", "UMOWA O PRACE zawarta z pracodawca", "PISMO PRZEWODNIE tresc"],
+        )
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert "Strona 1: brak dopasowania -> nowy nieznany segment" in messages
+    assert (
+        "Strona 3: LLM -> pierwsza strona 'Pismo przewodnie' (confidence 0.85, reasonCodes: layout)"
+        in messages
+    )
 
 
 def test_review_reasons_empty_for_auto_accepted_document():
