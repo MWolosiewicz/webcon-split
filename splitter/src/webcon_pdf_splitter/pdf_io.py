@@ -37,6 +37,43 @@ def parse_page_range(spec: str, page_count: int) -> list[int]:
     return sorted(pages)
 
 
+def remove_pages(source_path: Path, pages: list[int]) -> bytes:
+    reader = PdfReader(str(source_path))
+    to_remove = set(pages)
+    keep = [i for i in range(len(reader.pages)) if (i + 1) not in to_remove]
+    if not keep:
+        raise ValueError("Usuniecie tych stron zostawiloby pusty dokument")
+    writer = PdfWriter()
+    for index in keep:
+        writer.add_page(reader.pages[index])
+    buffer = io.BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
+def extract_pages(source_path: Path, pages: list[int]) -> bytes:
+    reader = PdfReader(str(source_path))
+    writer = PdfWriter()
+    for page in sorted(set(pages)):
+        writer.add_page(reader.pages[page - 1])
+    buffer = io.BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
+def merge_pdfs(source_paths: list[Path]) -> bytes:
+    if not source_paths:
+        raise ValueError("Brak plikow PDF do sklejenia")
+    writer = PdfWriter()
+    for path in source_paths:
+        reader = PdfReader(str(path))
+        for page in reader.pages:
+            writer.add_page(page)
+    buffer = io.BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
 def validate_pdf(path: Path) -> int:
     reader = PdfReader(str(path))
     if reader.is_encrypted:
