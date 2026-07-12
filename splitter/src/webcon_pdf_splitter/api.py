@@ -13,6 +13,7 @@ from webcon_pdf_splitter.classification.llm import (
     OpenAiCompatibleLlmClassifier,
 )
 from webcon_pdf_splitter.classification.pipeline import ClassificationPipeline
+from webcon_pdf_splitter.classification.prompts import PromptProvider
 from webcon_pdf_splitter.classification.rules import RuleBasedClassifier
 from webcon_pdf_splitter.config import SplitterSettings
 from webcon_pdf_splitter.contracts import PatternPayload, SplitResult
@@ -77,6 +78,10 @@ def build_llm_classifier(settings: SplitterSettings) -> LlmClassifier:
             endpoint=settings.llm_endpoint,
             model=settings.llm_model,
             timeout_seconds=settings.llm_timeout_seconds,
+            prompts=PromptProvider(
+                user_prompt_file=settings.llm_prompt_file,
+                system_prompt_file=settings.llm_system_prompt_file,
+            ),
         )
     return DisabledLlmClassifier()
 

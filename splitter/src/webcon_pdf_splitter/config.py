@@ -14,5 +14,7 @@ class SplitterSettings(BaseSettings):
     llm_endpoint: str = Field(default="")
     llm_model: str = Field(default="")
     llm_timeout_seconds: int = Field(default=30)
+    llm_prompt_file: str = Field(default="")
+    llm_system_prompt_file: str = Field(default="")
     api_token: str = Field(default="")
     log_level: str = Field(default="INFO")

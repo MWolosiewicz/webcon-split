@@ -31,3 +31,31 @@ def test_llm_flag_without_endpoint_stays_disabled():
     settings = SplitterSettings(_env_file=None, llm_enabled=True, llm_endpoint="", llm_model="x")
 
     assert isinstance(build_llm_classifier(settings), DisabledLlmClassifier)
+
+
+def test_prompt_files_from_settings_reach_the_classifier():
+    settings = SplitterSettings(
+        _env_file=None,
+        llm_enabled=True,
+        llm_endpoint="http://llm:1234/v1",
+        llm_model="model-x",
+        llm_prompt_file="/app/prompts/user-prompt.txt",
+        llm_system_prompt_file="/app/prompts/system-prompt.txt",
+    )
+
+    classifier = build_llm_classifier(settings)
+
+    assert isinstance(classifier, OpenAiCompatibleLlmClassifier)
+    assert classifier._prompts._user_prompt_file == "/app/prompts/user-prompt.txt"
+    assert classifier._prompts._system_prompt_file == "/app/prompts/system-prompt.txt"
+
+
+def test_prompt_files_default_to_builtin_prompts():
+    settings = SplitterSettings(
+        _env_file=None, llm_enabled=True, llm_endpoint="http://llm:1234/v1", llm_model="x"
+    )
+
+    classifier = build_llm_classifier(settings)
+
+    assert classifier._prompts._user_prompt_file == ""
+    assert classifier._prompts._system_prompt_file == ""
