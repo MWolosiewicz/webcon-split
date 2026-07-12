@@ -1,4 +1,14 @@
-from webcon_pdf_splitter.ocr import TextLayerWithOcrFallback, alnum_count
+import shutil
+
+import pytest
+
+from webcon_pdf_splitter.ocr import (
+    TesseractPageOcr,
+    TextLayerWithOcrFallback,
+    alnum_count,
+)
+
+_TESSERACT_MISSING = shutil.which("tesseract") is None
 
 
 class _FakeTextLayer:
@@ -108,3 +118,34 @@ def test_ocr_failure_does_not_break_extraction():
     # brak binarki tesseract -> zadanie przetwarzane dalej, strona pusta
     assert result[0].startswith("Strona pierwsza")
     assert result[1] == ""
+
+
+@pytest.mark.skipif(_TESSERACT_MISSING, reason="brak binarki tesseract")
+def test_tesseract_ocr_recognizes_rendered_text(tmp_path):
+    from PIL import Image, ImageDraw, ImageFont
+
+    image = Image.new("RGB", (700, 220), "white")
+    draw = ImageDraw.Draw(image)
+    try:
+        font = ImageFont.load_default(size=64)
+    except TypeError:
+        font = ImageFont.load_default()
+    draw.text((30, 70), "UMOWA", fill="black", font=font)
+    pdf_path = tmp_path / "scan.pdf"
+    image.save(str(pdf_path), "PDF")
+
+    engine = TesseractPageOcr(languages="eng", dpi=200)
+    result = engine.ocr_pages(str(pdf_path), [0])
+
+    assert "UMOWA" in result[0].upper()
+
+
+@pytest.mark.skipif(_TESSERACT_MISSING, reason="brak binarki tesseract")
+def test_tesseract_ocr_empty_index_list_returns_empty_dict(tmp_path):
+    from PIL import Image
+
+    pdf_path = tmp_path / "scan.pdf"
+    Image.new("RGB", (200, 200), "white").save(str(pdf_path), "PDF")
+
+    engine = TesseractPageOcr()
+    assert engine.ocr_pages(str(pdf_path), []) == {}

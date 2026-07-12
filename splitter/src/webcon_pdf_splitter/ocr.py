@@ -77,3 +77,52 @@ class TextLayerWithOcrFallback:
             [i + 1 for i in empty_indices],
         )
         return texts
+
+
+class TesseractPageOcr:
+    """OCR wybranych stron przez Tesseract (pypdfium2 render -> pytesseract).
+
+    Laduje dokument PDFium raz na wywolanie. Per strona lapie bledy
+    (timeout/render/brak binarki) i zwraca pusty tekst dla tej strony,
+    aby OCR nigdy nie wywracal calego zadania.
+    """
+
+    def __init__(
+        self,
+        languages: str = "pol+eng",
+        dpi: int = 300,
+        timeout_seconds: int = 30,
+    ) -> None:
+        self._languages = languages
+        self._dpi = dpi
+        self._timeout_seconds = timeout_seconds
+
+    def ocr_pages(self, pdf_path: str, page_indices: list[int]) -> dict[int, str]:
+        if not page_indices:
+            return {}
+        import pypdfium2 as pdfium
+        import pytesseract
+
+        results: dict[int, str] = {}
+        pdf = pdfium.PdfDocument(pdf_path)
+        try:
+            for index in page_indices:
+                try:
+                    page = pdf[index]
+                    bitmap = page.render(scale=self._dpi / 72.0)
+                    image = bitmap.to_pil()
+                    results[index] = pytesseract.image_to_string(
+                        image,
+                        lang=self._languages,
+                        timeout=self._timeout_seconds,
+                    )
+                except Exception:
+                    logger.warning(
+                        "OCR strony %s nie powiodl sie - strona pusta",
+                        index + 1,
+                        exc_info=True,
+                    )
+                    results[index] = ""
+        finally:
+            pdf.close()
+        return results
