@@ -40,3 +40,10 @@ class SplitResult(BaseModel):
     documents: list[DetectedDocument]
     warnings: list[str] = Field(default_factory=list)
     jobId: str | None = None
+
+
+class PageOpResult(BaseModel):
+    outputFileName: str
+    pageCount: int = Field(ge=0)
+    fileContentBase64: str
+    warnings: list[str] = Field(default_factory=list)

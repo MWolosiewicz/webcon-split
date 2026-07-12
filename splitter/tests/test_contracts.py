@@ -46,3 +46,17 @@ def test_detected_document_review_reasons_default_and_serialization():
     assert payload["reviewReasons"] == [
         "nierozpoznany typ dokumentu (zadna regula nie pasowala)"
     ]
+
+
+def test_page_op_result_roundtrip():
+    from webcon_pdf_splitter.contracts import PageOpResult
+
+    result = PageOpResult(
+        outputFileName="out.pdf",
+        pageCount=3,
+        fileContentBase64="QUJD",
+    )
+    dumped = result.model_dump()
+    assert dumped["outputFileName"] == "out.pdf"
+    assert dumped["pageCount"] == 3
+    assert dumped["warnings"] == []
