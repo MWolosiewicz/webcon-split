@@ -37,6 +37,55 @@ def test_pipeline_groups_pages_between_detected_first_pages():
     assert result.documents[1].endPage == 4
 
 
+def test_empty_page_skips_llm_and_glues_with_review():
+    stub = _StubLlm(
+        responses={
+            "": LlmClassification(
+                isFirstPage=True, documentType="Cokolwiek",
+                isKnownType=False, confidence=0.99,
+            )
+        }
+    )
+    result = _make_pipeline(llm_classifier=stub).split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "    \n  "],
+    )
+
+    # pusta strona 2 nie trafia do LLM mimo skonfigurowanej odpowiedzi
+    assert stub.calls == []
+    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
+        ("Umowa o prace", 1, 2),
+    ]
+    doc = result.documents[0]
+    assert doc.requiresReview is True
+    assert "glued_unknown_page:2" in doc.signals
+    assert doc.reviewReasons == [
+        "strona 2 bez tekstu (rowniez po OCR) - dolaczona automatycznie"
+    ]
+
+
+def test_leading_empty_pages_form_unknown_document():
+    result = _make_pipeline().split_pages(
+        "scan.pdf",
+        ["", "   ", "UMOWA O PRACE zawarta z pracodawca"],
+    )
+
+    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
+        ("Nieznany typ dokumentu", 1, 2),
+        ("Umowa o prace", 3, 3),
+    ]
+    unknown = result.documents[0]
+    assert unknown.requiresReview is True
+    assert (
+        "strona 1 bez tekstu (rowniez po OCR) - dolaczona automatycznie"
+        in unknown.reviewReasons
+    )
+    assert (
+        "strona 2 bez tekstu (rowniez po OCR) - dolaczona automatycznie"
+        in unknown.reviewReasons
+    )
+
+
 def _make_pipeline(llm_classifier=None):
     classifier = RuleBasedClassifier(
         patterns=[

@@ -4,6 +4,7 @@ import logging
 from webcon_pdf_splitter.classification.llm import LlmClassification, LlmClassifier
 from webcon_pdf_splitter.classification.rules import RuleBasedClassifier
 from webcon_pdf_splitter.contracts import DetectedDocument, SplitResult
+from webcon_pdf_splitter.ocr import alnum_count
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,7 @@ class _UnmatchedPage:
     page_number: int
     phrase_affinities: list[str]
     llm: LlmClassification | None
+    empty: bool = False
 
 
 @dataclass
@@ -79,7 +81,12 @@ class ClassificationPipeline:
                 )
                 continue
 
-            llm = self._try_llm(page_texts, index, known_types, current)
+            page_is_empty = alnum_count(text) == 0
+            llm = (
+                None
+                if page_is_empty
+                else self._try_llm(page_texts, index, known_types, current)
+            )
             if (
                 llm is not None
                 and llm.documentType
@@ -118,6 +125,7 @@ class ClassificationPipeline:
                 page_number=page_number,
                 phrase_affinities=sorted(page.phrase_affinities),
                 llm=llm,
+                empty=page_is_empty,
             )
             if current is not None and current.known:
                 current.end_page = page_number
@@ -252,13 +260,10 @@ class ClassificationPipeline:
         if not segment.known:
             reasons.append("nierozpoznany typ dokumentu (zadna regula nie pasowala)")
             for page in segment.unmatched_pages:
-                reasons.append(f"strona {page.page_number}: {self._unmatched_details(page)}")
+                reasons.append(self._page_review_reason(page, known=False))
         else:
             for page in segment.unmatched_pages:
-                reasons.append(
-                    f"strona {page.page_number} doklejona bez dopasowania do wzorca "
-                    f"({self._unmatched_details(page)})"
-                )
+                reasons.append(self._page_review_reason(page, known=True))
         if segment.confidence < self._min_auto_accept_confidence:
             reasons.append(
                 f"pewnosc {segment.confidence:.2f} ponizej progu auto-akceptacji "
@@ -266,8 +271,23 @@ class ClassificationPipeline:
             )
         return reasons
 
+    def _page_review_reason(self, page: _UnmatchedPage, known: bool) -> str:
+        if page.empty:
+            return (
+                f"strona {page.page_number} bez tekstu (rowniez po OCR) "
+                "- dolaczona automatycznie"
+            )
+        if known:
+            return (
+                f"strona {page.page_number} doklejona bez dopasowania do wzorca "
+                f"({self._unmatched_details(page)})"
+            )
+        return f"strona {page.page_number}: {self._unmatched_details(page)}"
+
     @staticmethod
     def _unmatched_details(page: _UnmatchedPage) -> str:
+        if page.empty:
+            return "strona bez tekstu (rowniez po OCR) - dolaczona automatycznie"
         if page.phrase_affinities:
             affinities = ", ".join(f"'{name}'" for name in page.phrase_affinities)
             parts = [f"frazy pasuja do: {affinities}"]

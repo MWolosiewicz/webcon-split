@@ -86,8 +86,10 @@ def _umowa_patterns_json() -> str:
 def test_split_uses_patterns_from_request(monkeypatch):
     monkeypatch.setattr(
         api,
-        "PdfTextOcrEngine",
-        lambda: _StubOcr(["UMOWA O PRACE zawarta pomiedzy pracodawca a pracownikiem"]),
+        "build_ocr_engine",
+        lambda settings: _StubOcr(
+            ["UMOWA O PRACE zawarta pomiedzy pracodawca a pracownikiem"]
+        ),
     )
     client = TestClient(app)
 
