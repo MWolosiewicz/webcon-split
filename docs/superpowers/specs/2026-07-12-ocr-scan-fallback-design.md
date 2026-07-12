@@ -39,12 +39,24 @@ brak założeń o jednym paradygmacie nagłówka.
 
 - nagłówek pasuje do słownika → nowy dokument,
 - ≥1 fraza typu bieżącego dokumentu → kontynuacja,
-- niedopasowana, ale **ma tekst** → LLM (jak dziś),
+- niedopasowana, ale **ma jakikolwiek tekst** → LLM (jak dziś),
 - niedopasowana i **pusta** (nowa bramka) → **nie** idzie do LLM; doklejana
   do bieżącego dokumentu z `requiresReview` i powodem po polsku.
 
-Jedna definicja "pustości" (próg znaków alfanumerycznych) obowiązuje w obu
-miejscach: przy wyzwalaniu OCR (etap 1) i przy bramce LLM (etap 2).
+**Dwa różne progi (decyzja użytkownika 2026-07-12, korekta pierwotnego specu):**
+próg "uruchom OCR" i próg "omiń LLM" mają różny sens i nie są tą samą liczbą.
+
+- **Uruchom OCR** (etap 1): tekst warstwy < `ocr_min_text_chars`
+  (domyślnie 25). Próg wysoki celowo — strona z samą stopką skanera
+  (np. "Skan 2024-01-01 str.1", ~15 znaków) ma trafić do OCR.
+- **Omiń LLM** (etap 2): strona jest "pusta" tylko gdy **nie ma żadnego znaku
+  alfanumerycznego** (`alnum_count(text) == 0`) — również po OCR. To stała
+  logiczna, bez zmiennej środowiskowej. Krótka, ale realna strona tekstu nie
+  jest uznawana za pustą i normalnie idzie do LLM. Zgodne z backlogiem
+  ("strona z pustym tekstem nie powinna iść do LLM").
+
+Wspólny jest tylko *sposób* liczenia — funkcja `alnum_count` używana przez
+oba etapy; różnią się progiem.
 
 ## Sekcja 1: Silniki OCR (`ocr.py`)
 
@@ -65,10 +77,10 @@ Nowe klasy za istniejącym protokołem `OcrEngine.extract_page_texts(pdf_path) -
   Page-OCR jest **wstrzykiwany** w konstruktorze → testy kompozytu bez
   realnego Tesseracta (fałszywy page-OCR).
 
-Definicja "pustości": funkcja pomocnicza licząca znaki alfanumeryczne
-(`sum(ch.isalnum() ...)`) — używana przez kompozyt i przez pipeline, jedno
-źródło prawdy. Umieszczona tak, by importowały ją oba moduły bez cyklu
-(np. w `ocr.py` lub małym helperze).
+Funkcja `alnum_count(text) -> int` (`sum(ch.isalnum() ...)`) w `ocr.py` —
+jedno źródło liczenia znaków, importowane przez kompozyt (próg 25) i przez
+pipeline (próg 0). Pipeline importuje z `ocr.py`; `ocr.py` nie importuje
+pipeline — brak cyklu.
 
 Wybór silnika w `api.py`: `settings.ocr_enabled` → kompozyt
 (`TextLayerWithOcrFallback` z `TesseractPageOcr`), w przeciwnym razie obecny
@@ -79,7 +91,7 @@ Wybór silnika w `api.py`: `settings.ocr_enabled` → kompozyt
 | Pole `SplitterSettings` | Env | Domyślnie | Znaczenie |
 |---|---|---|---|
 | `ocr_enabled` | `SPLITTER_OCR_ENABLED` | `True` | włącza fallback Tesseract |
-| `ocr_min_text_chars` | `SPLITTER_OCR_MIN_TEXT_CHARS` | `25` | poniżej tylu znaków alfanumerycznych strona uznana za pustą (OCR + bramka LLM) |
+| `ocr_min_text_chars` | `SPLITTER_OCR_MIN_TEXT_CHARS` | `25` | poniżej tylu znaków alfanumerycznych warstwy tekstowej strona idzie do OCR (tylko etap 1; bramka LLM ma osobny próg = 0) |
 | `ocr_languages` | `SPLITTER_OCR_LANGUAGES` | `pol+eng` | języki przekazywane do Tesseracta (`-l`) |
 | `ocr_dpi` | `SPLITTER_OCR_DPI` | `300` | rozdzielczość renderu strony do OCR |
 | `ocr_timeout_seconds` | `SPLITTER_OCR_TIMEOUT_SECONDS` | `30` | limit czasu OCR jednej strony |
@@ -88,17 +100,18 @@ Wybór silnika w `api.py`: `settings.ocr_enabled` → kompozyt
 
 ## Sekcja 3: Bramka "pusta strona omija LLM" (`pipeline.py`)
 
-Przed wywołaniem LLM dla strony niedopasowanej: jeśli tekst strony jest
-poniżej progu `ocr_min_text_chars` (ten sam próg co OCR) → pomiń LLM.
+Przed wywołaniem LLM dla strony niedopasowanej: jeśli
+`alnum_count(text) == 0` (strona pusta również po OCR) → pomiń LLM.
 Strona jest doklejana do bieżącego dokumentu z wymuszonym `requiresReview`
-i powodem po polsku, np.:
+i powodem po polsku (styl ASCII jak istniejące powody):
 
-> "strona N bez tekstu (również po OCR) — dołączona automatycznie"
+> "strona N bez tekstu (rowniez po OCR) - dolaczona automatycznie"
 
 Zachowanie brzegowe spójne z istniejącym `glued_unknown_page`: seria pustych
 stron przed pierwszym rozpoznanym dokumentem tworzy "Nieznany typ dokumentu"
-tak jak dziś. Pipeline dostaje próg z tych samych ustawień (parametr
-konstruktora lub `split_pages`), aby nie duplikować stałej.
+tak jak dziś (ta sama ścieżka doklejania, zmienia się tylko treść powodu).
+Bramka nie potrzebuje konfiguracji — próg to stała 0 (brak znaków
+alfanumerycznych).
 
 ## Sekcja 4: Obraz i zależności
 
