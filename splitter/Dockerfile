@@ -1,6 +1,15 @@
 FROM python:3.12-slim
 
 WORKDIR /app
+
+# Tesseract OCR (binarka + polski model) dla fallbacku skanow bez warstwy
+# tekstowej. eng wchodzi z pakietem bazowym tesseract-ocr.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        tesseract-ocr \
+        tesseract-ocr-pol \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml ./
 COPY src ./src
 RUN pip install --no-cache-dir .
