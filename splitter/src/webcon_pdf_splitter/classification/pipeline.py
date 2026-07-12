@@ -80,7 +80,12 @@ class ClassificationPipeline:
                 continue
 
             llm = self._try_llm(page_texts, index, known_types, current)
-            if llm is not None and llm.documentType and llm.confidence >= self._min_review_confidence:
+            if (
+                llm is not None
+                and llm.documentType
+                and not llm.inconsistencyReasons
+                and llm.confidence >= self._min_review_confidence
+            ):
                 if llm.isFirstPage:
                     current = _Segment(
                         document_type=llm.documentType,
@@ -282,6 +287,13 @@ class ClassificationPipeline:
             if page.llm.suggestedNewPatterns:
                 suggested = ", ".join(f"'{p}'" for p in page.llm.suggestedNewPatterns[:3])
                 detail += f", sugerowane frazy: {suggested}"
+            if page.llm.inconsistencyReasons:
+                detail = (
+                    "werdykt LLM odrzucony jako niespojny ("
+                    + "; ".join(page.llm.inconsistencyReasons)
+                    + "); "
+                    + detail
+                )
             parts.append(detail)
         else:
             parts.append("LLM bez werdyktu")

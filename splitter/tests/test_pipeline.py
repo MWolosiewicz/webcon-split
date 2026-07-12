@@ -495,3 +495,60 @@ def test_llm_not_called_for_affine_continuation_pages():
 
     assert len(result.documents) == 1
     assert stub.calls == []
+
+
+def test_inconsistent_llm_verdict_never_decides_split():
+    # halucynacja: model twierdzi, ze zna typ spoza slownika, z wysoka pewnoscia
+    stub = _StubLlm(
+        responses={
+            "strona bez zadnych fraz": LlmClassification(
+                isFirstPage=True,
+                documentType="Zaswiadczenie o zatrudnieniu",
+                isKnownType=True,
+                confidence=0.95,
+                inconsistencyReasons=[
+                    "isKnownType=true dla typu 'Zaswiadczenie o zatrudnieniu' "
+                    "spoza znanych typow"
+                ],
+            )
+        }
+    )
+    result = _make_pipeline(llm_classifier=stub).split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "strona bez zadnych fraz"],
+    )
+
+    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
+        ("Umowa o prace", 1, 2),
+    ]
+    assert result.documents[0].requiresReview is True
+
+
+def test_review_reasons_include_inconsistency_note():
+    stub = _StubLlm(
+        responses={
+            "strona bez zadnych fraz": LlmClassification(
+                isFirstPage=True,
+                documentType="Zaswiadczenie o zatrudnieniu",
+                isKnownType=True,
+                confidence=0.95,
+                inconsistencyReasons=[
+                    "isKnownType=true dla typu 'Zaswiadczenie o zatrudnieniu' "
+                    "spoza znanych typow"
+                ],
+            )
+        }
+    )
+    result = _make_pipeline(llm_classifier=stub).split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "strona bez zadnych fraz"],
+    )
+
+    doc = result.documents[0]
+    assert doc.reviewReasons == [
+        "strona 2 doklejona bez dopasowania do wzorca "
+        "(zadna fraza nie pasuje; werdykt LLM odrzucony jako niespojny "
+        "(isKnownType=true dla typu 'Zaswiadczenie o zatrudnieniu' spoza "
+        "znanych typow); LLM proponuje typ: 'Zaswiadczenie o zatrudnieniu' "
+        "(pewnosc 0.95))"
+    ]
