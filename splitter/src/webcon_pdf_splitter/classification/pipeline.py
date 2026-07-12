@@ -79,7 +79,7 @@ class ClassificationPipeline:
                 )
                 continue
 
-            llm = self._try_llm(page_texts, index, known_types)
+            llm = self._try_llm(page_texts, index, known_types, current)
             if llm is not None and llm.documentType and llm.confidence >= self._min_review_confidence:
                 if llm.isFirstPage:
                     current = _Segment(
@@ -222,7 +222,11 @@ class ClassificationPipeline:
         )
 
     def _try_llm(
-        self, page_texts: list[str], index: int, known_types: list[str]
+        self,
+        page_texts: list[str],
+        index: int,
+        known_types: list[str],
+        current: _Segment | None,
     ) -> LlmClassification | None:
         try:
             return self._llm_classifier.classify_uncertain_page(
@@ -230,6 +234,9 @@ class ClassificationPipeline:
                 previous_text=page_texts[index - 1] if index > 0 else "",
                 next_text=page_texts[index + 1] if index + 1 < len(page_texts) else "",
                 known_document_types=known_types,
+                current_document_type=(
+                    current.document_type if current is not None and current.known else ""
+                ),
             )
         except Exception:
             logger.warning("LLM classification failed for page %s", index + 1, exc_info=True)

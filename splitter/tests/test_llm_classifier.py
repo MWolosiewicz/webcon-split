@@ -245,3 +245,84 @@ def test_partial_continuation_of_current_document_is_not_flagged_as_wrong_type()
     )
 
     assert reasons == []
+
+
+def test_prompt_contains_current_document_type_and_json_known_types(monkeypatch):
+    captured = {}
+
+    def fake_post(url, json=None, timeout=None):
+        captured["payload"] = json
+        return _FakeResponse(200, payload=_completion(_VALID_JSON))
+
+    monkeypatch.setattr(llm_module.requests, "post", fake_post)
+    classifier = OpenAiCompatibleLlmClassifier("http://llm:1234/v1", "model-x")
+
+    classifier.classify_uncertain_page(
+        "tekst strony",
+        "poprzednia",
+        "nastepna",
+        ["Swiadectwo pracy", "Umowa o prace"],
+        current_document_type="Umowa o prace",
+    )
+
+    user_message = captured["payload"]["messages"][1]["content"]
+    assert 'TYP_BIEZACEGO_DOKUMENTU=Umowa o prace' in user_message
+    assert 'ZNANE_TYPY=["Swiadectwo pracy", "Umowa o prace"]' in user_message
+    assert "NIE zakladaj, ze tytul musi byc" in user_message
+
+
+def test_custom_prompt_provider_is_used(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_post(url, json=None, timeout=None):
+        captured["payload"] = json
+        return _FakeResponse(200, payload=_completion(_VALID_JSON))
+
+    monkeypatch.setattr(llm_module.requests, "post", fake_post)
+    prompt_file = tmp_path / "user.txt"
+    prompt_file.write_text("WLASNY SZABLON: {aktualna_strona}", encoding="utf-8")
+    from webcon_pdf_splitter.classification.prompts import PromptProvider
+
+    classifier = OpenAiCompatibleLlmClassifier(
+        "http://llm:1234/v1",
+        "model-x",
+        prompts=PromptProvider(user_prompt_file=str(prompt_file)),
+    )
+    classifier.classify_uncertain_page("tekst strony", "", "", [])
+
+    assert captured["payload"]["messages"][1]["content"] == "WLASNY SZABLON: tekst strony"
+
+
+def test_inconsistent_verdict_gets_reasons_attached(monkeypatch):
+    content = (
+        '{"isFirstPage": false, "documentType": "Aneks", "isKnownType": false,'
+        ' "confidence": 0.9, "reasonCodes": [], "suggestedNewPatterns": []}'
+    )
+
+    def fake_post(url, json=None, timeout=None):
+        return _FakeResponse(200, payload=_completion(content))
+
+    monkeypatch.setattr(llm_module.requests, "post", fake_post)
+    classifier = OpenAiCompatibleLlmClassifier("http://llm:1234/v1", "model-x")
+
+    result = classifier.classify_uncertain_page(
+        "tekst", "", "", ["Umowa o prace"], current_document_type="Umowa o prace"
+    )
+
+    assert result is not None
+    assert result.inconsistencyReasons == [
+        "kontynuacja z typem 'Aneks' innym niz biezacy 'Umowa o prace'"
+    ]
+
+
+def test_consistent_verdict_has_empty_inconsistency_reasons(monkeypatch):
+    def fake_post(url, json=None, timeout=None):
+        return _FakeResponse(200, payload=_completion(_VALID_JSON))
+
+    monkeypatch.setattr(llm_module.requests, "post", fake_post)
+    classifier = OpenAiCompatibleLlmClassifier("http://llm:1234/v1", "model-x")
+
+    result = classifier.classify_uncertain_page("tekst", "", "", [])
+
+    assert result is not None
+    assert result.inconsistencyReasons == []

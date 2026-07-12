@@ -156,8 +156,21 @@ class _StubLlm:
         self._error = error
         self.calls = []
 
-    def classify_uncertain_page(self, current_text, previous_text, next_text, known_document_types):
-        self.calls.append({"text": current_text, "known_types": known_document_types})
+    def classify_uncertain_page(
+        self,
+        current_text,
+        previous_text,
+        next_text,
+        known_document_types,
+        current_document_type="",
+    ):
+        self.calls.append(
+            {
+                "text": current_text,
+                "known_types": known_document_types,
+                "current_type": current_document_type,
+            }
+        )
         if self._error is not None:
             raise self._error
         return self._responses.get(current_text)
@@ -448,6 +461,29 @@ def test_review_reasons_for_unknown_document():
         "strona 2: zadna fraza nie pasuje; LLM bez werdyktu",
         "pewnosc 0.20 ponizej progu auto-akceptacji 0.90",
     ]
+
+
+def test_pipeline_passes_current_document_type_to_llm():
+    stub = _StubLlm()
+    _make_pipeline(llm_classifier=stub).split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "strona bez zadnych fraz"],
+    )
+
+    assert stub.calls == [
+        {
+            "text": "strona bez zadnych fraz",
+            "known_types": ["Swiadectwo pracy", "Umowa o prace"],
+            "current_type": "Umowa o prace",
+        }
+    ]
+
+
+def test_pipeline_passes_empty_current_type_at_bundle_start():
+    stub = _StubLlm()
+    _make_pipeline(llm_classifier=stub).split_pages("scan.pdf", ["obca strona"])
+
+    assert stub.calls[0]["current_type"] == ""
 
 
 def test_llm_not_called_for_affine_continuation_pages():

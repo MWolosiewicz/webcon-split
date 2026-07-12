@@ -5,6 +5,8 @@ from typing import Protocol
 from pydantic import BaseModel, Field
 import requests
 
+from webcon_pdf_splitter.classification.prompts import PromptProvider, build_context
+
 logger = logging.getLogger(__name__)
 
 
@@ -63,6 +65,7 @@ class LlmClassifier(Protocol):
         previous_text: str,
         next_text: str,
         known_document_types: list[str],
+        current_document_type: str = "",
     ) -> LlmClassification | None:
         ...
 
@@ -74,15 +77,23 @@ class DisabledLlmClassifier:
         previous_text: str,
         next_text: str,
         known_document_types: list[str],
+        current_document_type: str = "",
     ) -> LlmClassification | None:
         return None
 
 
 class OpenAiCompatibleLlmClassifier:
-    def __init__(self, endpoint: str, model: str, timeout_seconds: int = 30) -> None:
+    def __init__(
+        self,
+        endpoint: str,
+        model: str,
+        timeout_seconds: int = 30,
+        prompts: PromptProvider | None = None,
+    ) -> None:
         self._endpoint = endpoint.rstrip("/")
         self._model = model
         self._timeout_seconds = timeout_seconds
+        self._prompts = prompts or PromptProvider()
 
     def classify_uncertain_page(
         self,
@@ -90,18 +101,22 @@ class OpenAiCompatibleLlmClassifier:
         previous_text: str,
         next_text: str,
         known_document_types: list[str],
+        current_document_type: str = "",
     ) -> LlmClassification | None:
-        prompt = self._build_prompt(current_text, previous_text, next_text, known_document_types)
+        context = build_context(
+            current_text=current_text,
+            previous_text=previous_text,
+            next_text=next_text,
+            known_document_types=known_document_types,
+            current_document_type=current_document_type,
+        )
         payload = {
             "model": self._model,
             "temperature": 0,
             "response_format": {"type": "json_object"},
             "messages": [
-                {
-                    "role": "system",
-                    "content": "Klasyfikujesz strony dokumentow HR. Odpowiadasz tylko poprawnym JSON.",
-                },
-                {"role": "user", "content": prompt},
+                {"role": "system", "content": self._prompts.render_system(context)},
+                {"role": "user", "content": self._prompts.render_user(context)},
             ],
         }
         url = f"{self._endpoint}/chat/completions"
@@ -127,26 +142,13 @@ class OpenAiCompatibleLlmClassifier:
         if isinstance(confidence, (int, float)) and confidence > 1:
             # niektore modele zwracaja procenty zamiast ulamka 0-1
             data["confidence"] = confidence / 100 if confidence <= 100 else 1.0
-        return LlmClassification.model_validate(data)
-
-    @staticmethod
-    def _build_prompt(
-        current_text: str,
-        previous_text: str,
-        next_text: str,
-        known_document_types: list[str],
-    ) -> str:
-        return (
-            "Ustal, czy AKTUALNA_STRONA jest pierwsza strona nowego dokumentu HR, "
-            "czy kontynuacja poprzedniego dokumentu. "
-            "Zwroc TYLKO jeden obiekt JSON, bez zadnego innego tekstu, dokladnie w formacie: "
-            '{"isFirstPage": true|false, "documentType": "<nazwa typu dokumentu>", '
-            '"isKnownType": true|false, "confidence": <liczba od 0.0 do 1.0>, '
-            '"reasonCodes": ["<krotki_kod_powodu>"], "suggestedNewPatterns": ["<fraza>"]}. '
-            "Jesli typ pasuje do ktoregos ze ZNANE_TYPY, uzyj dokladnie tej nazwy "
-            "i ustaw isKnownType=true. documentType nigdy nie moze byc null.\n\n"
-            f"ZNANE_TYPY={known_document_types}\n\n"
-            f"POPRZEDNIA_STRONA={previous_text[:2000]}\n\n"
-            f"AKTUALNA_STRONA={current_text[:4000]}\n\n"
-            f"NASTEPNA_STRONA={next_text[:2000]}"
+        classification = LlmClassification.model_validate(data)
+        inconsistencies = find_inconsistencies(
+            classification, current_document_type, known_document_types
         )
+        if inconsistencies:
+            logger.info(
+                "Werdykt LLM odrzucony jako niespojny: %s", "; ".join(inconsistencies)
+            )
+            classification.inconsistencyReasons = inconsistencies
+        return classification
