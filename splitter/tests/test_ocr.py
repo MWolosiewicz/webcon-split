@@ -101,7 +101,22 @@ def test_page_stays_empty_when_ocr_returns_nothing():
 
     result = composite.extract_page_texts("blank-scan.pdf")
 
-    assert result[1] == "   "  # OCR nic nie znalazl -> strona zostaje pusta
+    assert result[1] == ""  # OCR nic nie znalazl -> oryginal (pusty) zachowany
+
+
+def test_ocr_result_ignored_when_shorter_than_text_layer():
+    # strona ma krotki, ale realny tekst warstwy (< prog) -> OCR probuje,
+    # ale zwraca mniej znakow -> zachowujemy oryginal (brak utraty danych)
+    ocr = _FakePageOcr({0: ""})
+    composite = TextLayerWithOcrFallback(
+        page_ocr=ocr,
+        text_layer=_FakeTextLayer(["Zalacznik nr 3 podpisany"]),  # 21 alnum < 25
+        min_text_chars=25,
+    )
+
+    result = composite.extract_page_texts("born-digital-short.pdf")
+
+    assert result[0] == "Zalacznik nr 3 podpisany"
 
 
 def test_ocr_failure_does_not_break_extraction():

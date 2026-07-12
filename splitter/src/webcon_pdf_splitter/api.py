@@ -17,7 +17,11 @@ from webcon_pdf_splitter.classification.prompts import PromptProvider
 from webcon_pdf_splitter.classification.rules import RuleBasedClassifier
 from webcon_pdf_splitter.config import SplitterSettings
 from webcon_pdf_splitter.contracts import PatternPayload, SplitResult
-from webcon_pdf_splitter.ocr import PdfTextOcrEngine
+from webcon_pdf_splitter.ocr import (
+    PdfTextOcrEngine,
+    TesseractPageOcr,
+    TextLayerWithOcrFallback,
+)
 from webcon_pdf_splitter.patterns import DocumentPattern, InMemoryPatternRepository
 from webcon_pdf_splitter.pdf_io import split_pdf, validate_pdf
 
@@ -86,6 +90,19 @@ def build_llm_classifier(settings: SplitterSettings) -> LlmClassifier:
     return DisabledLlmClassifier()
 
 
+def build_ocr_engine(settings: SplitterSettings):
+    if settings.ocr_enabled:
+        return TextLayerWithOcrFallback(
+            page_ocr=TesseractPageOcr(
+                languages=settings.ocr_languages,
+                dpi=settings.ocr_dpi,
+                timeout_seconds=settings.ocr_timeout_seconds,
+            ),
+            min_text_chars=settings.ocr_min_text_chars,
+        )
+    return PdfTextOcrEngine()
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -134,7 +151,7 @@ async def _split(
         min_auto_accept_confidence=settings.min_auto_accept_confidence,
         min_review_confidence=settings.min_review_confidence,
     )
-    ocr = PdfTextOcrEngine()
+    ocr = build_ocr_engine(settings)
 
     with TemporaryDirectory(dir=settings.work_dir if Path(settings.work_dir).exists() else None) as tmp:
         source_path = Path(tmp) / file.filename

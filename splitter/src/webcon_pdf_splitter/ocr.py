@@ -69,13 +69,16 @@ class TextLayerWithOcrFallback:
                 exc_info=True,
             )
             return texts
+        # Nadpisuj warstwe tekstowa tylko gdy OCR dostarczyl WIECEJ tresci -
+        # inaczej krotki, ale realny tekst (albo pusty OCR przy braku binarki)
+        # skasowalby oryginal (utrata danych).
+        filled = []
         for index, ocr_text in ocr_texts.items():
-            texts[index] = ocr_text
-        logger.info(
-            "OCR: uzupelniono tekst %s stron (indeksy stron: %s)",
-            len(empty_indices),
-            [i + 1 for i in empty_indices],
-        )
+            if alnum_count(ocr_text) > alnum_count(texts[index]):
+                texts[index] = ocr_text
+                filled.append(index + 1)
+        if filled:
+            logger.info("OCR: uzupelniono tekst %s stron (strony: %s)", len(filled), filled)
         return texts
 
 
