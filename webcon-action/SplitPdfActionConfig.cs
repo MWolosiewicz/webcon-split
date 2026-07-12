@@ -72,7 +72,7 @@ public class SplitPdfActionConfig : PluginConfiguration
         DisplayName = "Patterns data source ID",
         Description = "Zrodlo danych zwracajace aktywne wzorce rozpoznawania ze slownika typow dokumentow. " +
                       "Wymagane kolumny: DocumentType, Header, Phrases, ExcludedPhrases, Weight. " +
-                      "Frazy rozdzielane srednikami. Szczegoly: docs/deployment/webcon-dictionary.md.",
+                      "Frazy rozdzielane srednikami. Szczegoly: README.md (Integracja z WEBCON).",
         IsRequired = true,
         Order = 7)]
     public int PatternsDataSourceId { get; set; }
