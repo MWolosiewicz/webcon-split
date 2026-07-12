@@ -17,6 +17,8 @@ Serwis jest bezstanowy — nie potrzebuje bazy danych.
 | `SPLITTER_LLM_ENABLED` | nie (false) | Włącza fallback LLM dla stron nierozpoznanych (wymaga endpointu i modelu) |
 | `SPLITTER_LLM_TIMEOUT_SECONDS` | nie (30) | Limit czasu pojedynczego wywołania LLM |
 | `SPLITTER_LLM_ENDPOINT`, `SPLITTER_LLM_MODEL` | nie | Lokalny endpoint zgodny z OpenAI Chat Completions (Ollama/vLLM) |
+| `SPLITTER_LLM_PROMPT_FILE` | nie | Plik szablonu user promptu LLM (wolumen); pusty = prompt wbudowany. Patrz `splitter/docs/llm-prompt.md` |
+| `SPLITTER_LLM_SYSTEM_PROMPT_FILE` | nie | Plik szablonu system promptu LLM (wolumen); pusty = prompt wbudowany |
 | `SPLITTER_LOG_LEVEL` | nie (INFO) | Poziom logów aplikacji widocznych w `docker logs` (`DEBUG`/`INFO`/`WARNING`/`ERROR`); na INFO serwis loguje decyzję klasyfikacji dla każdej strony i podsumowanie podziału z powodami weryfikacji |
 
 Wzorce rozpoznawania przychodzą w żądaniu z akcji WEBCON (pole `patterns`);
@@ -102,3 +104,7 @@ SPLITTER_LLM_TIMEOUT_SECONDS=60
 Dane stron nie opuszczają infrastruktury — żądania idą tylko do wskazanego
 lokalnego endpointu. Błąd lub timeout LLM nie przerywa podziału: strona
 pozostaje "Nieznany typ dokumentu".
+
+Treść promptu (system + user) można podmienić plikami na wolumenie bez
+przebudowy obrazu — instrukcja krok po kroku i lista placeholderów:
+`splitter/docs/llm-prompt.md`.

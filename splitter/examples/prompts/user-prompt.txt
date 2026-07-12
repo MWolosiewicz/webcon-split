@@ -1,0 +1,32 @@
+ZADANIE: Ustal, czy AKTUALNA_STRONA to pierwsza strona NOWEGO dokumentu,
+czy KONTYNUACJA biezacego dokumentu typu "{typ_biezacego_dokumentu}".
+
+WSKAZOWKI:
+- Nowy dokument zwykle zaczyna sie od wyraznego tytulu lub naglowka.
+  Tytul moze miec rozna forme: pelna nazwa dokumentu, kod lub symbol
+  formularza, naglowek firmowy. NIE zakladaj, ze tytul musi byc
+  wielkimi literami.
+- Nowy dokument czesto dotyczy innej sprawy, innej osoby lub innej daty
+  niz poprzednia strona.
+- Kontynuacja zwykle: zaczyna sie w polowie zdania, listy lub tabeli;
+  kontynuuje watek z POPRZEDNIA_STRONA; zawiera numeracje stron (np. 2/3).
+- Sam fakt, ze strona zawiera slowa typowe dla dokumentow HR
+  (np. "pracownik", "wynagrodzenie"), NIE oznacza kontynuacji.
+
+ZASADY ODPOWIEDZI:
+- Jesli isFirstPage=false, documentType MUSI byc rowny
+  "{typ_biezacego_dokumentu}".
+- isKnownType=true tylko wtedy, gdy documentType jest DOKLADNIE jedna
+  z pozycji ZNANE_TYPY (uzyj identycznej pisowni).
+- documentType nigdy nie moze byc null ani pusty. Jesli nie rozpoznajesz
+  typu, opisz go wlasnymi slowami, ustaw isKnownType=false i obniz
+  confidence.
+- confidence to ulamek od 0.0 do 1.0, nie procent.
+
+FORMAT ODPOWIEDZI: {format_json}
+
+ZNANE_TYPY={znane_typy}
+TYP_BIEZACEGO_DOKUMENTU={typ_biezacego_dokumentu}
+POPRZEDNIA_STRONA={poprzednia_strona}
+AKTUALNA_STRONA={aktualna_strona}
+NASTEPNA_STRONA={nastepna_strona}
