@@ -322,9 +322,35 @@ WHERE el.WFD_DTYPEID = 123          -- ID typu formularza slownika
 ```
 
 Nagłówki i frazy najlepiej wpisywać bez polskich znaków (dopasowanie i tak
-normalizuje do ASCII — ułatwia diagnostykę). Zestaw danych startowych (typy HR,
-nagłówki, frazy, wagi) znajduje się w historii wdrożenia; przykład wzorców do
-testów generuje `scripts/make_test_documents.py`.
+normalizuje do ASCII — ułatwia diagnostykę). Przykład wzorców do testów generuje
+`scripts/make_test_documents.py`.
+
+**Dane startowe** (wprowadź ręcznie, ~15 min; wszystkie typy i wzorce: Aktywny = tak,
+Próg = 0,90):
+
+| Typ dokumentu | Nagłówek wzorca | Frazy | Frazy wykluczające | Waga |
+|---|---|---|---|---|
+| Umowa o pracę | UMOWA O PRACE | pracodawca; pracownik; wynagrodzenie; wymiar czasu pracy | aneks; wypowiedzenie; rozwiazanie umowy | 1,2 |
+| Aneks do umowy o pracę | ANEKS DO UMOWY O PRACE | zmienia sie; pozostale warunki; porozumienie stron | | 1,2 |
+| Aneks do umowy o pracę | ANEKS DO UMOWY | umowy o prace; zmienia sie | | 1,0 |
+| Umowa zlecenie | UMOWA ZLECENIE | zleceniodawca; zleceniobiorca | | 1,2 |
+| Umowa zlecenie | UMOWA ZLECENIA | zleceniodawca; zleceniobiorca | | 1,2 |
+| Wypowiedzenie umowy o pracę | WYPOWIEDZENIE UMOWY O PRACE | okres wypowiedzenia; rozwiazanie umowy | | 1,2 |
+| Wypowiedzenie umowy o pracę | ROZWIAZANIE UMOWY O PRACE | za wypowiedzeniem; bez wypowiedzenia; porozumienie stron | | 1,1 |
+| Świadectwo pracy | SWIADECTWO PRACY | stosunek pracy; okres zatrudnienia; urlop wypoczynkowy | | 1,2 |
+| Kwestionariusz osobowy | KWESTIONARIUSZ OSOBOWY | imie i nazwisko; data urodzenia; adres zamieszkania | | 1,2 |
+| Orzeczenie lekarskie | ORZECZENIE LEKARSKIE | zdolny do pracy; badania profilaktyczne; medycyna pracy | | 1,2 |
+| Orzeczenie lekarskie | ZASWIADCZENIE LEKARSKIE | zdolny do pracy; przeciwwskazania | | 1,0 |
+| Zaświadczenie o ukończeniu szkolenia BHP | ZASWIADCZENIE O UKONCZENIU SZKOLENIA | bezpieczenstwa i higieny pracy; bhp; szkolenie okresowe | | 1,1 |
+| Zaświadczenie o ukończeniu szkolenia BHP | KARTA SZKOLENIA WSTEPNEGO | instruktaz ogolny; instruktaz stanowiskowy; bhp | | 1,2 |
+| Oświadczenie PIT-2 | PIT-2 | oswiadczenie; zaliczek na podatek; kwoty zmniejszajacej | | 1,2 |
+| Zgoda na przetwarzanie danych osobowych | ZGODA NA PRZETWARZANIE DANYCH | danych osobowych; rodo; administratorem danych | | 1,2 |
+
+Diagnostyka słownika: błąd o brakujących kolumnach → aliasy w zapytaniu muszą
+brzmieć dokładnie `DocumentType/Header/Phrases/ExcludedPhrases/Weight`;
+„patterns data source returned no rows" w logu akcji → słownik pusty lub wszystko
+nieaktywne (wszystko → „Nieznany typ dokumentu"); HTTP 400 „Invalid patterns payload"
+→ złe typy wartości (np. tekst w kolumnie Weight).
 
 ### Procesy i elementy
 
