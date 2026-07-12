@@ -18,3 +18,8 @@ class SplitterSettings(BaseSettings):
     llm_system_prompt_file: str = Field(default="")
     api_token: str = Field(default="")
     log_level: str = Field(default="INFO")
+    ocr_enabled: bool = Field(default=True)
+    ocr_min_text_chars: int = Field(default=25)
+    ocr_languages: str = Field(default="pol+eng")
+    ocr_dpi: int = Field(default=300)
+    ocr_timeout_seconds: int = Field(default=30)
