@@ -68,3 +68,29 @@ def test_pages_endpoint_requires_token_when_configured(monkeypatch):
         files={"file": ("doc.pdf", io.BytesIO(_pdf_bytes(2)), "application/pdf")},
     )
     assert response.status_code == 401
+
+
+def test_merge_endpoint_concatenates_in_order():
+    client = TestClient(app)
+    response = client.post(
+        "/api/merge",
+        data={"output_file_name": "scalony.pdf"},
+        files=[
+            ("files", ("b.pdf", io.BytesIO(_pdf_bytes(3)), "application/pdf")),
+            ("files", ("a.pdf", io.BytesIO(_pdf_bytes(2)), "application/pdf")),
+        ],
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["outputFileName"] == "scalony.pdf"
+    assert payload["pageCount"] == 5
+    assert _decode_pages(payload) == 5
+
+
+def test_merge_endpoint_rejects_non_pdf():
+    client = TestClient(app)
+    response = client.post(
+        "/api/merge",
+        files=[("files", ("note.txt", io.BytesIO(b"hello"), "text/plain"))],
+    )
+    assert response.status_code == 400

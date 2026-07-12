@@ -247,3 +247,37 @@ async def extract_pages_endpoint(
         pageCount=_page_count_of(output),
         fileContentBase64=base64.b64encode(output).decode("ascii"),
     )
+
+
+@app.post("/api/merge", response_model=PageOpResult)
+async def merge_endpoint(
+    files: list[UploadFile] = File(...),
+    output_file_name: str = Form(default="merged.pdf"),
+    authorization: str | None = Header(default=None),
+    webcon_element_id: int | None = Header(default=None, alias="X-Webcon-Element-Id"),
+) -> PageOpResult:
+    settings = get_settings()
+    _require_token(settings, authorization)
+    if not files:
+        raise HTTPException(status_code=400, detail="No files to merge")
+    with TemporaryDirectory(dir=settings.work_dir if Path(settings.work_dir).exists() else None) as tmp:
+        paths: list[Path] = []
+        for index, upload in enumerate(files):
+            if not upload.filename or not upload.filename.lower().endswith(".pdf"):
+                raise HTTPException(status_code=400, detail="Only PDF files are supported")
+            path = Path(tmp) / f"{index:03d}_{upload.filename}"
+            path.write_bytes(await upload.read())
+            try:
+                validate_pdf(path)
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            paths.append(path)
+        try:
+            output = merge_pdfs(paths)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return PageOpResult(
+        outputFileName=output_file_name,
+        pageCount=_page_count_of(output),
+        fileContentBase64=base64.b64encode(output).decode("ascii"),
+    )
