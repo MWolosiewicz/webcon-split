@@ -1,0 +1,10 @@
+{
+  "id": "naglowek-firmowy",
+  "opis": "Nowy dokument nieznanego typu zaczynajacy sie naglowkiem firmowym",
+  "znane_typy": ["Aneks do umowy", "Swiadectwo pracy", "Umowa o prace"],
+  "typ_biezacego_dokumentu": "Umowa o prace",
+  "poprzednia_strona": "W sprawach nieuregulowanych stosuje sie Kodeks pracy. Podpis pracodawcy, podpis pracownika.",
+  "aktualna_strona": "ACME Sp. z o.o., ul. Prosta 1, 00-001 Warszawa, NIP 525-000-11-22\nZaswiadczenie o zatrudnieniu i wynagrodzeniu\nNiniejszym zaswiadcza sie, ze Pan Adam Nowak jest zatrudniony w naszej firmie od 01.02.2020 na stanowisku ksiegowego.",
+  "nastepna_strona": "Srednie miesieczne wynagrodzenie z ostatnich 3 miesiecy wynosi 8 750 zl brutto. Zaswiadczenie wydaje sie na prosbe pracownika.",
+  "oczekiwane": { "isFirstPage": true, "isKnownType": false }
+}

@@ -1,0 +1,10 @@
+{
+  "id": "tytul-wielkimi-literami",
+  "opis": "Nowy dokument znanego typu, tytul wielkimi literami",
+  "znane_typy": ["Aneks do umowy", "Swiadectwo pracy", "Umowa o prace"],
+  "typ_biezacego_dokumentu": "Umowa o prace",
+  "poprzednia_strona": "W sprawach nieuregulowanych stosuje sie przepisy Kodeksu pracy. Umowe sporzadzono w dwoch egzemplarzach. Podpis pracodawcy: Jan Kowalski. Podpis pracownika: Adam Nowak.",
+  "aktualna_strona": "SWIADECTWO PRACY\n1. Stwierdza sie, ze Pan Adam Nowak, urodzony 12.05.1988, byl zatrudniony w ACME Sp. z o.o. w okresie od 01.02.2020 do 31.05.2026 w pelnym wymiarze czasu pracy.",
+  "nastepna_strona": "4. Stosunek pracy ustal w wyniku rozwiazania umowy za porozumieniem stron. 5. Wykorzystano urlop wypoczynkowy w wymiarze 12 dni.",
+  "oczekiwane": { "isFirstPage": true, "documentType": "Swiadectwo pracy", "isKnownType": true }
+}

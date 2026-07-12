@@ -1,0 +1,10 @@
+{
+  "id": "aneks-po-umowie",
+  "opis": "Nowy dokument znanego typu z frazami nakladajacymi sie na typ poprzedni (aneks po umowie)",
+  "znane_typy": ["Aneks do umowy", "Swiadectwo pracy", "Umowa o prace"],
+  "typ_biezacego_dokumentu": "Umowa o prace",
+  "poprzednia_strona": "Umowa wchodzi w zycie z dniem podpisania. Sporzadzono w dwoch egzemplarzach. Podpisy stron: Jan Kowalski, Piotr Zielinski.",
+  "aktualna_strona": "ANEKS DO UMOWY O PRACE\nzawartej w dniu 1 czerwca 2026 r. Strony zgodnie postanawiaja, ze od dnia 1 sierpnia 2026 r. stanowisko Pracownika ulega zmianie na: starszy analityk danych.",
+  "nastepna_strona": "Pozostale warunki umowy o prace pozostaja bez zmian. Podpisy stron.",
+  "oczekiwane": { "isFirstPage": true, "documentType": "Aneks do umowy", "isKnownType": true }
+}

@@ -1,0 +1,10 @@
+{
+  "id": "tytul-normalna-pisownia",
+  "opis": "Nowy dokument znanego typu, tytul zwykla pisownia (nie wielkimi literami)",
+  "znane_typy": ["Aneks do umowy", "Swiadectwo pracy", "Umowa o prace"],
+  "typ_biezacego_dokumentu": "Swiadectwo pracy",
+  "poprzednia_strona": "Pouczenie: pracownik moze w ciagu 14 dni wystapic o sprostowanie swiadectwa pracy. Data i podpis: 31.05.2026, Anna Wisniewska.",
+  "aktualna_strona": "Umowa o prace\nzawarta w dniu 1 czerwca 2026 r. w Warszawie pomiedzy ACME Sp. z o.o., zwana dalej Pracodawca, a Panem Piotrem Zielinskim, zwanym dalej Pracownikiem.",
+  "nastepna_strona": "2. Wynagrodzenie zasadnicze wynosi 9 200 zl brutto miesiecznie, platne do 10. dnia nastepnego miesiaca.",
+  "oczekiwane": { "isFirstPage": true, "documentType": "Umowa o prace", "isKnownType": true }
+}

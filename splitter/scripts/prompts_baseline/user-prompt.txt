@@ -1,0 +1,9 @@
+Ustal, czy AKTUALNA_STRONA jest pierwsza strona nowego dokumentu HR, czy kontynuacja poprzedniego dokumentu. Zwroc TYLKO jeden obiekt JSON, bez zadnego innego tekstu, dokladnie w formacie: {format_json}. Jesli typ pasuje do ktoregos ze ZNANE_TYPY, uzyj dokladnie tej nazwy i ustaw isKnownType=true. documentType nigdy nie moze byc null.
+
+ZNANE_TYPY={znane_typy}
+
+POPRZEDNIA_STRONA={poprzednia_strona}
+
+AKTUALNA_STRONA={aktualna_strona}
+
+NASTEPNA_STRONA={nastepna_strona}

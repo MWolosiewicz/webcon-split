@@ -1,0 +1,10 @@
+{
+  "id": "malo-tekstu-zalacznik",
+  "opis": "Strona z bardzo mala iloscia tekstu - zalacznik do biezacego dokumentu",
+  "znane_typy": ["Aneks do umowy", "Swiadectwo pracy", "Umowa o prace"],
+  "typ_biezacego_dokumentu": "Umowa o prace",
+  "poprzednia_strona": "Integralna czescia umowy jest zalacznik nr 1 - zakres obowiazkow. Podpisy stron.",
+  "aktualna_strona": "Zalacznik nr 1 do umowy o prace\nZakres obowiazkow: prowadzenie ksiag rachunkowych, sporzadzanie deklaracji.",
+  "nastepna_strona": "",
+  "oczekiwane": { "isFirstPage": false, "documentType": "Umowa o prace" }
+}

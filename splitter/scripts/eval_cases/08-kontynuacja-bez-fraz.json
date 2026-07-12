@@ -1,0 +1,10 @@
+{
+  "id": "kontynuacja-bez-fraz",
+  "opis": "Kontynuacja bez zadnej frazy typu - tylko formuly koncowe i podpisy",
+  "znane_typy": ["Aneks do umowy", "Swiadectwo pracy", "Umowa o prace"],
+  "typ_biezacego_dokumentu": "Aneks do umowy",
+  "poprzednia_strona": "ANEKS DO UMOWY O PRACE z dnia 01.02.2020. Strony zgodnie postanawiaja, ze od 01.07.2026 wynagrodzenie zasadnicze ulega podwyzszeniu do kwoty 9 800 zl brutto.",
+  "aktualna_strona": "Pozostale postanowienia pozostaja bez zmian. Sporzadzono w dwoch jednobrzmiacych egzemplarzach.\n\nData i podpis: 15.06.2026\nJan Kowalski                    Adam Nowak",
+  "nastepna_strona": "",
+  "oczekiwane": { "isFirstPage": false, "documentType": "Aneks do umowy" }
+}

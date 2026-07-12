@@ -1,0 +1,10 @@
+{
+  "id": "kontynuacja-tabela",
+  "opis": "Kontynuacja - dalszy ciag tabeli z poprzedniej strony",
+  "znane_typy": ["Aneks do umowy", "Swiadectwo pracy", "Umowa o prace"],
+  "typ_biezacego_dokumentu": "Swiadectwo pracy",
+  "poprzednia_strona": "SWIADECTWO PRACY. Okresy zatrudnienia:\n| Od | Do | Stanowisko |\n| 01.02.2020 | 31.12.2022 | Mlodszy ksiegowy |",
+  "aktualna_strona": "| 01.01.2023 | 31.05.2026 | Ksiegowy |\n| - | - | - |\nLacznie: 6 lat i 4 miesiace zatrudnienia.",
+  "nastepna_strona": "Pouczenie o mozliwosci sprostowania swiadectwa w terminie 14 dni.",
+  "oczekiwane": { "isFirstPage": false, "documentType": "Swiadectwo pracy" }
+}

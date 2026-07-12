@@ -1,0 +1,10 @@
+{
+  "id": "kontynuacja-numeracja",
+  "opis": "Kontynuacja z widoczna numeracja stron",
+  "znane_typy": ["Aneks do umowy", "Swiadectwo pracy", "Umowa o prace"],
+  "typ_biezacego_dokumentu": "Umowa o prace",
+  "poprzednia_strona": "UMOWA O PRACE. 1. Strony umowy. 2. Rodzaj pracy: specjalista ds. logistyki.\nStrona 1/3",
+  "aktualna_strona": "5. Pracownikowi przysluguje urlop zgodnie z Kodeksem pracy. 6. Okres wypowiedzenia wynosi jeden miesiac.\nStrona 2/3",
+  "nastepna_strona": "7. Umowa wchodzi w zycie z dniem podpisania. Podpisy stron.\nStrona 3/3",
+  "oczekiwane": { "isFirstPage": false, "documentType": "Umowa o prace" }
+}

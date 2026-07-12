@@ -1,0 +1,10 @@
+{
+  "id": "poczatek-paczki",
+  "opis": "Pierwsza strona paczki - brak biezacego dokumentu (typ = BRAK)",
+  "znane_typy": ["Aneks do umowy", "Swiadectwo pracy", "Umowa o prace"],
+  "typ_biezacego_dokumentu": "",
+  "poprzednia_strona": "",
+  "aktualna_strona": "UMOWA O PRACE zawarta w dniu 1 czerwca 2026 r. pomiedzy ACME Sp. z o.o. (Pracodawca) a Piotrem Zielinskim (Pracownik). 1. Stanowisko: analityk danych.",
+  "nastepna_strona": "2. Wynagrodzenie zasadnicze: 8 500 zl brutto miesiecznie.",
+  "oczekiwane": { "isFirstPage": true, "documentType": "Umowa o prace", "isKnownType": true }
+}

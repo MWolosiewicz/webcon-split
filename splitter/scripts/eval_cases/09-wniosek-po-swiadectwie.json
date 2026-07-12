@@ -1,0 +1,10 @@
+{
+  "id": "wniosek-po-swiadectwie",
+  "opis": "PULAPKA: nowy dokument nieznanego typu z generycznymi frazami HR po swiadectwie (klasa realnego bledu z 2026-07-11)",
+  "znane_typy": ["Aneks do umowy", "Swiadectwo pracy", "Umowa o prace"],
+  "typ_biezacego_dokumentu": "Swiadectwo pracy",
+  "poprzednia_strona": "6. Informacja o zajeciu wynagrodzenia: brak. 7. Pouczenie: pracownik moze wystapic o sprostowanie swiadectwa pracy w ciagu 14 dni. Podpis pracodawcy.",
+  "aktualna_strona": "Wniosek o dofinansowanie zakupu okularow korygujacych\nZwracam sie z prosba o dofinansowanie zakupu okularow korygujacych do pracy przy monitorze. Jestem pracownikiem dzialu ksiegowosci, moje wynagrodzenie pomniejszane jest o skladki zgodnie z przepisami.\nW zalaczeniu faktura na kwote 450 zl.",
+  "nastepna_strona": "Opinia lekarza medycyny pracy: zalecane okulary korygujace do pracy z monitorem ekranowym.",
+  "oczekiwane": { "isFirstPage": true, "isKnownType": false }
+}

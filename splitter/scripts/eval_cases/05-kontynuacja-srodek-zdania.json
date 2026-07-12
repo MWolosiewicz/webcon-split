@@ -1,0 +1,10 @@
+{
+  "id": "kontynuacja-srodek-zdania",
+  "opis": "Kontynuacja zaczynajaca sie w polowie zdania",
+  "znane_typy": ["Aneks do umowy", "Swiadectwo pracy", "Umowa o prace"],
+  "typ_biezacego_dokumentu": "Umowa o prace",
+  "poprzednia_strona": "UMOWA O PRACE zawarta 1 czerwca 2026 r. pomiedzy ACME Sp. z o.o. a Piotrem Zielinskim. 1. Pracodawca zatrudnia Pracownika na stanowisku analityka. 2. Wynagrodzenie zasadnicze,",
+  "aktualna_strona": "ktore strony ustalily w drodze negocjacji, wynosi 8 500 zl brutto miesiecznie i jest platne do 10. dnia kazdego miesiaca na rachunek bankowy wskazany przez Pracownika.",
+  "nastepna_strona": "3. Wymiar czasu pracy: pelny etat. 4. Miejsce wykonywania pracy: Warszawa.",
+  "oczekiwane": { "isFirstPage": false, "documentType": "Umowa o prace" }
+}

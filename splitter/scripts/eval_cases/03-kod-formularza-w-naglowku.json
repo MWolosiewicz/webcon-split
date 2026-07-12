@@ -1,0 +1,10 @@
+{
+  "id": "kod-formularza-w-naglowku",
+  "opis": "Nowy dokument nieznanego typu rozpoznawalny po kodzie formularza w naglowku",
+  "znane_typy": ["Aneks do umowy", "Swiadectwo pracy", "Umowa o prace"],
+  "typ_biezacego_dokumentu": "Umowa o prace",
+  "poprzednia_strona": "Umowe sporzadzono w dwoch jednobrzmiacych egzemplarzach, po jednym dla kazdej ze stron. Podpisy stron.",
+  "aktualna_strona": "KW-3/2026\nKarta obiegowa pracownika\nImie i nazwisko: Adam Nowak\nDzial: Ksiegowosc\nData rozpoczecia obiegu: 02.06.2026\nPotwierdzenia dzialow: IT [ ], Kadry [ ], Magazyn [ ]",
+  "nastepna_strona": "Uwagi dzialow: brak zastrzezen. Podpis kierownika dzialu kadr.",
+  "oczekiwane": { "isFirstPage": true, "isKnownType": false }
+}
