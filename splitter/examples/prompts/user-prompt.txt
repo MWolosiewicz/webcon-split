@@ -1,5 +1,5 @@
-ZADANIE: Ustal, czy AKTUALNA_STRONA to pierwsza strona NOWEGO dokumentu,
-czy KONTYNUACJA biezacego dokumentu typu "{typ_biezacego_dokumentu}".
+ZADANIE: Zdecyduj, czy AKTUALNA_STRONA zaczyna NOWY dokument, czy jest
+KONTYNUACJA biezacego dokumentu typu "{typ_biezacego_dokumentu}".
 
 WSKAZOWKI:
 - Nowy dokument zwykle zaczyna sie od wyraznego tytulu lub naglowka.
@@ -8,16 +8,24 @@ WSKAZOWKI:
   wielkimi literami.
 - Nowy dokument czesto dotyczy innej sprawy, innej osoby lub innej daty
   niz poprzednia strona.
+- Jesli POPRZEDNIA_STRONA konczy sie podpisami lub formulami koncowymi,
+  poprzedni dokument prawdopodobnie sie skonczyl i AKTUALNA_STRONA
+  zaczyna nowy dokument.
 - Kontynuacja zwykle: zaczyna sie w polowie zdania, listy lub tabeli;
   kontynuuje watek z POPRZEDNIA_STRONA; zawiera numeracje stron (np. 2/3).
+- Strona bedaca zalacznikiem do biezacego dokumentu (np. "Zalacznik nr 1
+  do umowy") to KONTYNUACJA biezacego dokumentu.
 - Sam fakt, ze strona zawiera slowa typowe dla dokumentow HR
   (np. "pracownik", "wynagrodzenie"), NIE oznacza kontynuacji.
 
-ZASADY ODPOWIEDZI:
-- Jesli isFirstPage=false, documentType MUSI byc rowny
-  "{typ_biezacego_dokumentu}".
-- isKnownType=true tylko wtedy, gdy documentType jest DOKLADNIE jedna
-  z pozycji ZNANE_TYPY (uzyj identycznej pisowni).
+JAK WYPELNIC ODPOWIEDZ:
+- Strona zaczyna NOWY dokument -> ustaw isFirstPage=true oraz
+  documentType = typ tego nowego dokumentu.
+- Strona jest KONTYNUACJA -> ustaw isFirstPage=false oraz
+  documentType = "{typ_biezacego_dokumentu}".
+- isKnownType=true TYLKO wtedy, gdy documentType wystepuje DOKLADNIE
+  na liscie ZNANE_TYPY (identyczna pisownia). Kazdy typ spoza listy
+  to isKnownType=false.
 - documentType nigdy nie moze byc null ani pusty. Jesli nie rozpoznajesz
   typu, opisz go wlasnymi slowami, ustaw isKnownType=false i obniz
   confidence.
