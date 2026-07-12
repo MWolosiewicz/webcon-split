@@ -1,4 +1,5 @@
 import base64
+import io
 import logging
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -6,6 +7,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from pydantic import TypeAdapter, ValidationError
+from pypdf import PdfReader
 
 from webcon_pdf_splitter.classification.llm import (
     DisabledLlmClassifier,
@@ -16,14 +18,21 @@ from webcon_pdf_splitter.classification.pipeline import ClassificationPipeline
 from webcon_pdf_splitter.classification.prompts import PromptProvider
 from webcon_pdf_splitter.classification.rules import RuleBasedClassifier
 from webcon_pdf_splitter.config import SplitterSettings
-from webcon_pdf_splitter.contracts import PatternPayload, SplitResult
+from webcon_pdf_splitter.contracts import PageOpResult, PatternPayload, SplitResult
 from webcon_pdf_splitter.ocr import (
     PdfTextOcrEngine,
     TesseractPageOcr,
     TextLayerWithOcrFallback,
 )
 from webcon_pdf_splitter.patterns import DocumentPattern, InMemoryPatternRepository
-from webcon_pdf_splitter.pdf_io import split_pdf, validate_pdf
+from webcon_pdf_splitter.pdf_io import (
+    extract_pages,
+    merge_pdfs,
+    parse_page_range,
+    remove_pages,
+    split_pdf,
+    validate_pdf,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -56,6 +65,15 @@ def _require_token(settings: SplitterSettings, authorization: str | None) -> Non
 
 
 _PATTERNS_ADAPTER = TypeAdapter(list[PatternPayload])
+
+
+def _derive_name(original: str, suffix: str) -> str:
+    stem = original[:-4] if original.lower().endswith(".pdf") else original
+    return f"{stem}{suffix}.pdf"
+
+
+def _page_count_of(pdf_bytes: bytes) -> int:
+    return len(PdfReader(io.BytesIO(pdf_bytes)).pages)
 
 
 def parse_patterns_field(raw: str) -> list[DocumentPattern]:
@@ -169,3 +187,63 @@ async def _split(
             document.fileContentBase64 = base64.b64encode(output_path.read_bytes()).decode("ascii")
 
         return result
+
+
+@app.post("/api/pages/remove", response_model=PageOpResult)
+async def remove_pages_endpoint(
+    file: UploadFile = File(...),
+    pages: str = Form(...),
+    authorization: str | None = Header(default=None),
+    webcon_element_id: int | None = Header(default=None, alias="X-Webcon-Element-Id"),
+) -> PageOpResult:
+    settings = get_settings()
+    _require_token(settings, authorization)
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+    with TemporaryDirectory(dir=settings.work_dir if Path(settings.work_dir).exists() else None) as tmp:
+        source_path = Path(tmp) / file.filename
+        source_path.write_bytes(await file.read())
+        try:
+            page_count = validate_pdf(source_path)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try:
+            selected = parse_page_range(pages, page_count)
+            output = remove_pages(source_path, selected)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return PageOpResult(
+        outputFileName=_derive_name(file.filename, "_bez-stron"),
+        pageCount=_page_count_of(output),
+        fileContentBase64=base64.b64encode(output).decode("ascii"),
+    )
+
+
+@app.post("/api/pages/extract", response_model=PageOpResult)
+async def extract_pages_endpoint(
+    file: UploadFile = File(...),
+    pages: str = Form(...),
+    authorization: str | None = Header(default=None),
+    webcon_element_id: int | None = Header(default=None, alias="X-Webcon-Element-Id"),
+) -> PageOpResult:
+    settings = get_settings()
+    _require_token(settings, authorization)
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+    with TemporaryDirectory(dir=settings.work_dir if Path(settings.work_dir).exists() else None) as tmp:
+        source_path = Path(tmp) / file.filename
+        source_path.write_bytes(await file.read())
+        try:
+            page_count = validate_pdf(source_path)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try:
+            selected = parse_page_range(pages, page_count)
+            output = extract_pages(source_path, selected)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return PageOpResult(
+        outputFileName=_derive_name(file.filename, "_strony"),
+        pageCount=_page_count_of(output),
+        fileContentBase64=base64.b64encode(output).decode("ascii"),
+    )
