@@ -233,6 +233,9 @@ Dockerfile.
 |---|---|
 | `GET /health` | Kontrola życia serwisu → `{"status":"ok"}` |
 | `POST /api/split` | multipart: `file` (PDF) + `patterns` (JSON, opcjonalne) → `SplitResult` |
+| `POST /api/pages/remove` | multipart: `file` (PDF) + `pages` (zakres) → `PageOpResult` bez tych stron |
+| `POST /api/pages/extract` | multipart: `file` (PDF) + `pages` (zakres) → `PageOpResult` tylko z tymi stronami |
+| `POST /api/merge` | multipart: wiele `files` (PDF) w kolejności + `output_file_name` → `PageOpResult` (sklejony) |
 
 `/api/split` wymaga `Authorization: Bearer <SPLITTER_API_TOKEN>` (jeśli token
 skonfigurowany) i przyjmuje nagłówek `X-Webcon-Element-Id` (trafia do logów —
@@ -260,6 +263,19 @@ oraz `documents` — lista `DetectedDocument`:
 | `metadata` | zarezerwowane |
 
 Błędy: `400` (PDF zaszyfrowany/uszkodzony, złe `patterns`, nie-PDF), `401` (zły token).
+
+### Ręczne operacje na PDF (dla akcji operatora)
+
+Endpointy `/api/pages/remove`, `/api/pages/extract`, `/api/merge` obsługują ręczną
+korektę załączników przez operatora. Nie używają OCR/LLM/wzorców — to czyste operacje
+na stronach. Uwierzytelnianie i nagłówek `X-Webcon-Element-Id` jak w `/api/split`.
+
+- **`pages`** — zakres stron **1-based, inclusive**, np. `2-4,7`. Zły zakres / pusty
+  wynik (usunięcie wszystkich stron) → `400` z komunikatem w `detail`.
+- **`/api/merge`** — pola `files` powtórzone w kolejności sklejania; `output_file_name`
+  opcjonalne (domyślnie `merged.pdf`).
+
+**Odpowiedź `PageOpResult`:** `{ outputFileName, pageCount, fileContentBase64, warnings }`.
 
 ## Integracja z WEBCON
 
