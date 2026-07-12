@@ -163,3 +163,85 @@ def test_plain_json_response_still_parses(monkeypatch):
 
     assert result is not None
     assert result.confidence == 0.9
+
+
+def _classification(**overrides):
+    kwargs = dict(
+        isFirstPage=True,
+        documentType="Umowa o prace",
+        isKnownType=True,
+        confidence=0.9,
+    )
+    kwargs.update(overrides)
+    return LlmClassification(**kwargs)
+
+
+def test_consistent_first_page_verdict_has_no_inconsistencies():
+    verdict = _classification()
+
+    reasons = llm_module.find_inconsistencies(
+        verdict, current_document_type="Swiadectwo pracy",
+        known_document_types=["Swiadectwo pracy", "Umowa o prace"],
+    )
+
+    assert reasons == []
+
+
+def test_consistent_continuation_verdict_has_no_inconsistencies():
+    verdict = _classification(isFirstPage=False, documentType="Umowa o prace")
+
+    reasons = llm_module.find_inconsistencies(
+        verdict, current_document_type="Umowa o prace",
+        known_document_types=["Umowa o prace"],
+    )
+
+    assert reasons == []
+
+
+def test_continuation_with_different_type_is_inconsistent():
+    verdict = _classification(isFirstPage=False, documentType="Aneks", isKnownType=False)
+
+    reasons = llm_module.find_inconsistencies(
+        verdict, current_document_type="Umowa o prace",
+        known_document_types=["Umowa o prace"],
+    )
+
+    assert reasons == [
+        "kontynuacja z typem 'Aneks' innym niz biezacy 'Umowa o prace'"
+    ]
+
+
+def test_continuation_without_current_document_is_inconsistent():
+    verdict = _classification(isFirstPage=False, documentType="", isKnownType=False)
+
+    reasons = llm_module.find_inconsistencies(
+        verdict, current_document_type="", known_document_types=["Umowa o prace"],
+    )
+
+    assert reasons == ["kontynuacja bez biezacego dokumentu"]
+
+
+def test_known_type_outside_known_list_is_inconsistent():
+    verdict = _classification(documentType="Zaswiadczenie", isKnownType=True)
+
+    reasons = llm_module.find_inconsistencies(
+        verdict, current_document_type="Umowa o prace",
+        known_document_types=["Umowa o prace"],
+    )
+
+    assert reasons == [
+        "isKnownType=true dla typu 'Zaswiadczenie' spoza znanych typow"
+    ]
+
+
+def test_partial_continuation_of_current_document_is_not_flagged_as_wrong_type():
+    # werdykt czesciowy (documentType="") przy istniejacym biezacym dokumencie:
+    # regula 1 nie moze go zglaszac (pusty typ to nie "inny typ")
+    verdict = _classification(isFirstPage=False, documentType="", isKnownType=False)
+
+    reasons = llm_module.find_inconsistencies(
+        verdict, current_document_type="Umowa o prace",
+        known_document_types=["Umowa o prace"],
+    )
+
+    assert reasons == []

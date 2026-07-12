@@ -24,6 +24,36 @@ class LlmClassification(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     reasonCodes: list[str] = Field(default_factory=list)
     suggestedNewPatterns: list[str] = Field(default_factory=list)
+    # niepuste = werdykt odrzucony jako wewnetrznie sprzeczny; nie moze
+    # decydowac o podziale, ale tresc trafia do reviewReasons jako podpowiedz
+    inconsistencyReasons: list[str] = Field(default_factory=list)
+
+
+def find_inconsistencies(
+    classification: LlmClassification,
+    current_document_type: str,
+    known_document_types: list[str],
+) -> list[str]:
+    """Wylacznie logiczna spojnosc odpowiedzi modelu - zero heurystyk
+    wygladu strony (tytuly, wielkie litery itp.)."""
+    reasons: list[str] = []
+    if not classification.isFirstPage:
+        if not current_document_type:
+            reasons.append("kontynuacja bez biezacego dokumentu")
+        elif (
+            classification.documentType
+            and classification.documentType != current_document_type
+        ):
+            reasons.append(
+                f"kontynuacja z typem '{classification.documentType}' "
+                f"innym niz biezacy '{current_document_type}'"
+            )
+    if classification.isKnownType and classification.documentType not in known_document_types:
+        reasons.append(
+            f"isKnownType=true dla typu '{classification.documentType}' "
+            "spoza znanych typow"
+        )
+    return reasons
 
 
 class LlmClassifier(Protocol):
