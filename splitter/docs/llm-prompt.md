@@ -45,6 +45,11 @@ logowana na poziomie INFO ("Prompt user z pliku '...' (N znakow)").
 
 ## Wdrozenie w Dockerze
 
+Montaz to bind mount: `./prompts` = fizyczny katalog obok
+`docker-compose.yml` na hoscie (np. `splitter/prompts/` na serwerze),
+w kontenerze widoczny jako `/app/prompts`. Docker nie kopiuje plikow —
+edycja na hoscie jest natychmiast widoczna w kontenerze.
+
 1. Obok `docker-compose.yml` utworz katalog `prompts/`.
 2. Skopiuj do niego pliki startowe:
    `cp examples/prompts/user-prompt.txt examples/prompts/system-prompt.txt prompts/`
