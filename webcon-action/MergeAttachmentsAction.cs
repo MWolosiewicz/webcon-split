@@ -17,16 +17,25 @@ public class MergeAttachmentsAction : CustomAction<MergeAttachmentsActionConfig>
         var pluginVersion = typeof(MergeAttachmentsAction).Assembly.GetName().Version?.ToString(3) ?? "?";
         try
         {
-            var itemList = args.Context.CurrentDocument.ItemsLists.GetByID(Configuration.ItemListId);
+            var itemListId = Configuration.ItemList?.ItemListId ?? 0;
+            if (itemListId <= 0)
+                throw new InvalidOperationException("Nie wskazano listy pozycji w konfiguracji akcji.");
+            var attachmentColumnId = Configuration.ItemList?.ListColumns?.Count > 0
+                ? Configuration.ItemList.ListColumns[0].AttachmentIdColumnId
+                : 0;
+            if (attachmentColumnId <= 0)
+                throw new InvalidOperationException("Nie wskazano kolumny z ID zalacznika w konfiguracji akcji.");
+
+            var itemList = args.Context.CurrentDocument.ItemsLists.GetByID(itemListId);
             if (itemList == null)
                 throw new InvalidOperationException(
-                    $"Nie znaleziono listy pozycji o ID {Configuration.ItemListId}.");
+                    $"Nie znaleziono listy pozycji o ID {itemListId}.");
 
             var manager = new DocumentAttachmentsManager(args.Context);
             var inputs = new List<MergeInput>();
             foreach (var row in itemList.Rows)
             {
-                var rawValue = row.GetCellValue(Configuration.AttachmentIdColumnId, EntityValueFormat.PairID);
+                var rawValue = row.GetCellValue(attachmentColumnId, EntityValueFormat.PairID);
                 var idText = rawValue?.ToString()?.Trim();
                 if (string.IsNullOrEmpty(idText))
                     continue; // pomijamy puste wiersze (niewybrany zalacznik)
