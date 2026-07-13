@@ -507,10 +507,55 @@ uruchamia się ręcznie przeciw lokalnemu modelowi (poza pytest) do strojenia pr
 | Katalog | Zawartość |
 |---|---|
 | `splitter/` | Serwis Python/FastAPI + `Dockerfile`, `docker-compose.yml`, `.env.example`, testy, skrypty |
-| `splitter/src/webcon_pdf_splitter/` | `api.py`, `ocr.py`, `config.py`, `contracts.py`, `patterns.py`, `pdf_io.py`, `classification/` (rules, llm, pipeline, prompts) |
+| `splitter/src/webcon_pdf_splitter/` | Kod serwisu (moduły opisane niżej) |
 | `splitter/docs/llm-prompt.md` | Manual placeholderów promptu LLM |
 | `webcon-action/` | Plugin C# (BPS 2026 SDK) + `package.ps1` budujący ZIP |
 | `docs/superpowers/` | Historia projektowa: specyfikacje i plany (migawki dzienne, nie bieżąca dokumentacja) |
+
+### Moduły serwisu (`splitter/src/webcon_pdf_splitter/`)
+
+| Plik | Odpowiedzialność |
+|---|---|
+| `api.py` | Warstwa HTTP (FastAPI): endpointy `/health`, `/api/split`, `/api/pages/remove`, `/api/pages/extract`, `/api/merge`; autoryzacja Bearer, parsowanie pola `patterns`, składanie zależności (silnik OCR, klasyfikatory, pipeline) z ustawień, dekodowanie nazw plików RFC 2047 z klienta .NET, konfiguracja logowania |
+| `config.py` | `SplitterSettings` — wszystkie zmienne `SPLITTER_*` (pydantic-settings, czyta `.env`, nieznane wpisy ignoruje) |
+| `contracts.py` | Modele Pydantic API: `PatternPayload` (wejście), `DetectedDocument`, `SplitResult`, `PageOpResult` (wyjście) |
+| `patterns.py` | `DocumentPattern` (typ, nagłówek, frazy, frazy wykluczające, waga, aktywność) + `InMemoryPatternRepository` zwracające tylko aktywne wzorce |
+| `ocr.py` | Zdobycie tekstu stron: `PdfTextOcrEngine` (warstwa tekstowa), `TesseractPageOcr` (render pypdfium2 + pytesseract), kompozyt `TextLayerWithOcrFallback` (progi, „OCR nie niszczy danych", degradacja bez wywracania żądania), wspólny licznik `alnum_count` |
+| `pdf_io.py` | Czyste operacje na PDF (bez klasyfikacji): `split_pdf` (cięcie wg wykrytych dokumentów, oryginalne strony), `remove_pages` / `extract_pages` / `merge_pdfs` dla akcji ręcznych, `parse_page_range` (zakresy `2-4,7`), `validate_pdf` |
+| `classification/rules.py` | `RuleBasedClassifier` — punktacja wzorców (nagłówek/frazy/wykluczenia) na tekście znormalizowanym do ASCII; wyznacza pierwszą stronę i powinowactwo fraz |
+| `classification/pipeline.py` | `ClassificationPipeline` — serce podziału: grupowanie stron w segmenty (reguła → powinowactwo → LLM → doklejenie / segment nieznany), bramka pustych stron, progi pewności, budowa `reviewReasons`, `warnings`, nazw plików i całego `SplitResult` |
+| `classification/llm.py` | Fallback LLM: `OpenAiCompatibleLlmClassifier` (retry bez `response_format`, tolerancyjne parsowanie JSON, normalizacja pewności w procentach), strażnik spójności `find_inconsistencies`, model `LlmClassification`, `DisabledLlmClassifier` (LLM wyłączony) |
+| `classification/prompts.py` | `PromptProvider` — wbudowane szablony system/user promptu, ładowanie nadpisań z plików (`SPLITTER_LLM_PROMPT_FILE` / `..._SYSTEM_PROMPT_FILE`), `build_context` wypełniający placeholdery |
+
+### Testy (`splitter/tests/`)
+
+| Plik | Zakres |
+|---|---|
+| `conftest.py` | Fixture izolujące ustawienia (env) między testami |
+| `test_api.py` | Endpoint `/health` |
+| `test_api_split.py` | `/api/split` end-to-end: token (brak/zły/dobry), pliki wynikowe w base64, nazwy plików RFC 2047 z .NET |
+| `test_api_pages.py` | `/api/pages/remove` / `extract` / `merge`: poprawne operacje, złe zakresy, nie-PDF, token |
+| `test_split_patterns.py` | Pole `patterns` żądania: mapowanie na `DocumentPattern`, wartości domyślne, odrzucanie złego JSON/schematu, podział bez wzorców (wszystko „Nieznany typ dokumentu") |
+| `test_config_logging.py` | Domyślne ustawienia (log level, OCR), czytanie env, `configure_logging`, wybór silnika OCR wg `SPLITTER_OCR_ENABLED` |
+| `test_contracts.py` | Serializacja modeli odpowiedzi |
+| `test_normalization.py` | Normalizacja ASCII (diakrytyki, `ł`→`l`, wielkość liter, kompresja spacji) po obu stronach porównania |
+| `test_rule_classifier.py` | Punktacja reguł: nagłówek, frazy, frazy wykluczające, progi pierwszej strony i braku dopasowania |
+| `test_repository_mapping.py` | Filtrowanie aktywnych wzorców w repozytorium |
+| `test_pipeline.py` | Grupowanie stron: segmenty, kontynuacja po powinowactwie, doklejanie z `forced_review`, segmenty nieznane, bramka pustych stron, werdykty LLM w pipeline, `reviewReasons`/`warnings`/logi |
+| `test_ocr.py` | Kompozyt OCR: próg uruchomienia, reguła „OCR nie niszczy danych", degradacja przy braku binarki; testy z realnym Tesseractem oznaczone `skipif` |
+| `test_pdf_io.py` | `parse_page_range` (błędne zakresy, odwrócone, poza dokumentem), remove/extract/merge, cięcie `split_pdf` |
+| `test_llm_classifier.py` | Klient LLM: wyciąganie JSON z płotów markdown, retry po HTTP 400, normalizacja procentów, werdykt bez typu, strażnik spójności |
+| `test_llm_wiring.py` | `build_llm_classifier`: wybór `Disabled`/`OpenAiCompatible` wg ustawień (flaga, endpoint, model) |
+| `test_prompts.py` | `PromptProvider`: szablony wbudowane vs z plików, placeholdery, `format_json` wstrzykiwany z kodu |
+
+### Skrypty (`splitter/scripts/`)
+
+| Plik | Rola |
+|---|---|
+| `make_test_documents.py` | Zestaw paczek born-digital pokrywających scenariusze pipeline'u (czysty podział, wtrącenie, obcy początek/ogon, paczka nieznana) + `wzorce_testowe.json` |
+| `make_test_bundle.py` | Pojedyncza paczka testowa z kilkoma dokumentami HR (`--z-nieznanym`) |
+| `make_scanned_bundle.py` | „Skan" bez warstwy tekstowej (strony jako obrazy, Pillow) do weryfikacji fallbacku OCR (`--z-nieznanym`, `--z-pusta`, `--dpi`) |
+| `llm_eval.py` | Ewaluacja promptu LLM na przypadkach z `scripts/eval_cases/` przeciw żywemu endpointowi (poza pytest); do strojenia promptu |
 
 ## Status i ograniczenia
 
