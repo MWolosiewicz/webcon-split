@@ -42,9 +42,13 @@ public class ExtractPagesToNewFormAction : CustomAction<ExtractPagesToNewFormAct
             }
 
             var documentsManager = new DocumentsManager(args.Context);
+            // jawne przypisania: konstruktor SDK ma kolejnosc (docTypeID, workFlowID),
+            // latwo o pomylke pozycyjna
             var newDocument = await documentsManager.GetNewDocumentAsync(
-                new GetNewDocumentParams(targetWorkflowId, targetDocTypeId)
+                new GetNewDocumentParams
                 {
+                    WorkFlowID = targetWorkflowId,
+                    DocTypeID = targetDocTypeId,
                     ParentDocumentID = args.Context.CurrentDocument.ID,
                 });
 

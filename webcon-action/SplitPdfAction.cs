@@ -53,9 +53,13 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
 
             foreach (var detected in result.Documents)
             {
+                // jawne przypisania: konstruktor SDK ma kolejnosc (docTypeID, workFlowID),
+                // latwo o pomylke pozycyjna
                 var newDocument = await documentsManager.GetNewDocumentAsync(
-                    new GetNewDocumentParams(targetWorkflowId, targetDocTypeId)
+                    new GetNewDocumentParams
                     {
+                        WorkFlowID = targetWorkflowId,
+                        DocTypeID = targetDocTypeId,
                         ParentDocumentID = args.Context.CurrentDocument.ID,
                     });
 
