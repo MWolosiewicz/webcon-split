@@ -7,20 +7,12 @@ services:
     ports:
       # port hosta 8010 (8000 zajmuje kontener pdf-processor); w kontenerze serwis slucha na 8000
       - "8010:8000"
-    # Zmienne (m.in. SPLITTER_API_TOKEN, SPLITTER_LOG_LEVEL) czytane sa
-    # z pliku .env obok tego compose - patrz README.md (Konfiguracja serwisu)
-    # Zmienne OCR (opcjonalne, wartosci domyslne w nawiasach):
-    #   SPLITTER_OCR_ENABLED (true)          - fallback Tesseract dla skanow
-    #   SPLITTER_OCR_MIN_TEXT_CHARS (25)     - ponizej -> strona idzie do OCR
-    #   SPLITTER_OCR_LANGUAGES (pol+eng)     - jezyki Tesseracta
-    #   SPLITTER_OCR_DPI (300)               - rozdzielczosc renderu strony
-    #   SPLITTER_OCR_TIMEOUT_SECONDS (30)    - limit OCR jednej strony
+    # Cala konfiguracja (zmienne SPLITTER_*) zyje w pliku .env obok tego
+    # compose - szablon z opisami: .env.example, szczegoly: README.md.
     env_file:
       - .env
-    # Szablony promptow LLM z hosta (opcjonalne) - patrz docs/llm-prompt.md.
-    # Po odkomentowaniu ustaw w .env:
-    #   SPLITTER_LLM_PROMPT_FILE=/app/prompts/user-prompt.txt
-    #   SPLITTER_LLM_SYSTEM_PROMPT_FILE=/app/prompts/system-prompt.txt
+    # Wolumen na szablony promptow LLM z hosta (opcjonalny) - po odkomentowaniu
+    # wskaz pliki w .env (SPLITTER_LLM_PROMPT_FILE / ..._SYSTEM_PROMPT_FILE).
     # volumes:
     #   - ./prompts:/app/prompts
     healthcheck:
