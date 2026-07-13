@@ -307,6 +307,28 @@ podpisana strong name. Wymaga licencji SDK.
 ID obiektów: Designer Studio → właściwości obiektu → ID (włącz „Pokaż identyfikatory
 obiektów", jeśli niewidoczne).
 
+### Ręczne akcje operatora
+
+Gdy automat sklei dwa dokumenty w jeden (element oznaczony „do sprawdzenia"),
+operator koryguje wynik trzema akcjami — zwykle podpiętymi pod przyciski w kroku
+weryfikacji:
+
+- **RemovePagesAction** — usuwa zakres stron (np. `2-4,7`) z jedynego PDF-a
+  w dozwolonych kategoriach załącznika. Przełącznik „Podmień zawartość w miejscu"
+  (nadpisz oryginał) lub dodanie nowego załącznika (oryginał zostaje).
+- **ExtractPagesToNewFormAction** — wycina strony do nowego, surowego elementu
+  (bez klasyfikacji — typ i weryfikację ustawia operator) w obiegu docelowym;
+  przełącznik „Usuń wycięte strony ze źródła" (przenoszenie vs kopiowanie).
+- **MergeAttachmentsAction** — skleja załączniki wskazane w liście pozycji
+  (wiersz = załącznik po ID z kolumny picker, kolejność wierszy = kolejność
+  sklejania) w jeden PDF dodawany do bieżącego elementu; źródła zostają.
+
+Wszystkie trzy dzielą konfigurację połączenia (URL/token/timeout) z `SplitPdfAction`.
+Kategorie załączników podaje się nazwami lub ID grup, rozdzielone średnikami;
+akcje remove/extract wymagają **dokładnie jednego** PDF-a w tych kategoriach
+(0 lub >1 → czytelny błąd). Komunikaty walidacyjne serwisu (np. „Strona 8 poza
+dokumentem (1-6)") trafiają do komunikatu błędu akcji.
+
 ### Słownik typów i źródło danych
 
 Wzorce żyją w procesie słownikowym WEBCON (nagłówek = typ, lista pozycji = wzorce)
