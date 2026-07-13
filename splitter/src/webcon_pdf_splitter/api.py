@@ -67,6 +67,33 @@ def _require_token(settings: SplitterSettings, authorization: str | None) -> Non
 _PATTERNS_ADAPTER = TypeAdapter(list[PatternPayload])
 
 
+def _normalize_upload_filename(raw: str | None) -> str:
+    """Odzyskuje prawdziwa nazwe pliku z uploadu.
+
+    .NET (MultipartFormDataContent w akcjach WEBCON) koduje nie-ASCII nazwy
+    jako RFC 2047 (=?utf-8?B?...?=) w polu filename, a parser Starlette nie
+    czyta pola filename*. Przegladarki/httpx wysylaja surowe UTF-8 - wtedy
+    dekodowanie jest no-opem. Dodatkowo odcinamy sciezki (basename).
+    """
+    if not raw:
+        return ""
+    name = raw
+    if name.startswith("=?") and name.rstrip().endswith("?="):
+        from email.header import decode_header
+
+        try:
+            decoded_parts = decode_header(name)
+            name = "".join(
+                part.decode(charset or "utf-8") if isinstance(part, bytes) else part
+                for part, charset in decoded_parts
+            )
+        except Exception:  # nieparsowalne naglowki zostawiamy jak sa
+            name = raw
+    # tylko nazwa pliku - bez skladnikow sciezki z klienta
+    name = name.replace("\\", "/").rsplit("/", 1)[-1]
+    return name.strip()
+
+
 def _derive_name(original: str, suffix: str) -> str:
     stem = original[:-4] if original.lower().endswith(".pdf") else original
     return f"{stem}{suffix}.pdf"
@@ -136,24 +163,25 @@ async def split_pdf_endpoint(
     settings = get_settings()
     _require_token(settings, authorization)
 
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
+    filename = _normalize_upload_filename(file.filename)
+    if not filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
 
     job_id = str(uuid4())
     logger.info(
         "Przyjeto '%s' do podzialu (jobId=%s, webconElementId=%s)",
-        file.filename,
+        filename,
         job_id,
         webcon_element_id,
     )
-    result = await _split(settings, file, patterns)
+    result = await _split(settings, file, patterns, filename)
     # identyfikator korelacyjny: akcja WEBCON zapisuje go w logu operacji
     result.jobId = job_id
     return result
 
 
 async def _split(
-    settings: SplitterSettings, file: UploadFile, patterns_field: str | None
+    settings: SplitterSettings, file: UploadFile, patterns_field: str | None, filename: str
 ) -> SplitResult:
     if patterns_field is not None:
         try:
@@ -172,7 +200,7 @@ async def _split(
     ocr = build_ocr_engine(settings)
 
     with TemporaryDirectory(dir=settings.work_dir if Path(settings.work_dir).exists() else None) as tmp:
-        source_path = Path(tmp) / file.filename
+        source_path = Path(tmp) / filename
         source_path.write_bytes(await file.read())
         try:
             validate_pdf(source_path)
@@ -180,7 +208,7 @@ async def _split(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         page_texts = ocr.extract_page_texts(str(source_path))
-        result = pipeline.split_pages(file.filename, page_texts)
+        result = pipeline.split_pages(filename, page_texts)
 
         output_paths = split_pdf(source_path, Path(tmp) / "output", result.documents)
         for document, output_path in zip(result.documents, output_paths):
@@ -198,10 +226,11 @@ async def remove_pages_endpoint(
 ) -> PageOpResult:
     settings = get_settings()
     _require_token(settings, authorization)
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
+    filename = _normalize_upload_filename(file.filename)
+    if not filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
     with TemporaryDirectory(dir=settings.work_dir if Path(settings.work_dir).exists() else None) as tmp:
-        source_path = Path(tmp) / file.filename
+        source_path = Path(tmp) / filename
         source_path.write_bytes(await file.read())
         try:
             page_count = validate_pdf(source_path)
@@ -213,7 +242,7 @@ async def remove_pages_endpoint(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     return PageOpResult(
-        outputFileName=_derive_name(file.filename, "_bez-stron"),
+        outputFileName=_derive_name(filename, "_bez-stron"),
         pageCount=_page_count_of(output),
         fileContentBase64=base64.b64encode(output).decode("ascii"),
     )
@@ -228,10 +257,11 @@ async def extract_pages_endpoint(
 ) -> PageOpResult:
     settings = get_settings()
     _require_token(settings, authorization)
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
+    filename = _normalize_upload_filename(file.filename)
+    if not filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
     with TemporaryDirectory(dir=settings.work_dir if Path(settings.work_dir).exists() else None) as tmp:
-        source_path = Path(tmp) / file.filename
+        source_path = Path(tmp) / filename
         source_path.write_bytes(await file.read())
         try:
             page_count = validate_pdf(source_path)
@@ -243,7 +273,7 @@ async def extract_pages_endpoint(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     return PageOpResult(
-        outputFileName=_derive_name(file.filename, "_strony"),
+        outputFileName=_derive_name(filename, "_strony"),
         pageCount=_page_count_of(output),
         fileContentBase64=base64.b64encode(output).decode("ascii"),
     )
@@ -263,9 +293,10 @@ async def merge_endpoint(
     with TemporaryDirectory(dir=settings.work_dir if Path(settings.work_dir).exists() else None) as tmp:
         paths: list[Path] = []
         for index, upload in enumerate(files):
-            if not upload.filename or not upload.filename.lower().endswith(".pdf"):
+            upload_name = _normalize_upload_filename(upload.filename)
+            if not upload_name.lower().endswith(".pdf"):
                 raise HTTPException(status_code=400, detail="Only PDF files are supported")
-            path = Path(tmp) / f"{index:03d}_{upload.filename}"
+            path = Path(tmp) / f"{index:03d}_{upload_name}"
             path.write_bytes(await upload.read())
             try:
                 validate_pdf(path)

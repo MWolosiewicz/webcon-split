@@ -94,3 +94,52 @@ def test_merge_endpoint_rejects_non_pdf():
         files=[("files", ("note.txt", io.BytesIO(b"hello"), "text/plain"))],
     )
     assert response.status_code == 400
+
+
+# .NET MultipartFormDataContent koduje nie-ASCII nazwy plikow jako RFC 2047
+# (=?utf-8?B?...?=) w polu filename; parser Starlette ignoruje filename*.
+# Serwis musi odkodowac taka nazwe, inaczej polskie znaki daja HTTP 400.
+_DOTNET_DISPOSITION = (
+    'Content-Disposition: form-data; name=file; '
+    'filename="=?utf-8?B?emHFm3dpYWRjemVuaWVfxYLEhWthIMW7w7PFgsSHLnBkZg==?="; '
+    "filename*=utf-8''za%C5%9Bwiadczenie_%C5%82%C4%85ka%20%C5%BB%C3%B3%C5%82%C4%87.pdf"
+)
+
+
+def _dotnet_style_body(boundary: str, pdf: bytes, pages: str) -> bytes:
+    return (
+        f"--{boundary}\r\nContent-Type: application/pdf\r\n{_DOTNET_DISPOSITION}\r\n\r\n".encode()
+        + pdf
+        + f"\r\n--{boundary}\r\nContent-Disposition: form-data; name=pages\r\n\r\n{pages}\r\n--{boundary}--\r\n".encode()
+    )
+
+
+def test_remove_pages_accepts_dotnet_rfc2047_polish_filename():
+    client = TestClient(app)
+    boundary = "testboundary123"
+    response = client.post(
+        "/api/pages/remove",
+        content=_dotnet_style_body(boundary, _pdf_bytes(3), "2"),
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["pageCount"] == 2
+    assert payload["outputFileName"] == "zaświadczenie_łąka Żółć_bez-stron.pdf"
+
+
+def test_split_accepts_dotnet_rfc2047_polish_filename():
+    client = TestClient(app)
+    boundary = "testboundary456"
+    body = (
+        f"--{boundary}\r\nContent-Type: application/pdf\r\n{_DOTNET_DISPOSITION}\r\n\r\n".encode()
+        + _pdf_bytes(2)
+        + f"\r\n--{boundary}--\r\n".encode()
+    )
+    response = client.post(
+        "/api/split",
+        content=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+    assert response.status_code == 200
+    assert response.json()["sourceFileName"] == "zaświadczenie_łąka Żółć.pdf"
