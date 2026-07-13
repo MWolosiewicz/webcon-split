@@ -9,7 +9,6 @@ splitter/work/
 .env
 bin/
 obj/
-webcon-action/Publish/
 test-data/
 .env.docker
 docker-compose.override.yml
