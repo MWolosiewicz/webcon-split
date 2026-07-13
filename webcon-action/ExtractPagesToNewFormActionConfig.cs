@@ -1,0 +1,55 @@
+using WebCon.WorkFlow.SDK.Common;
+using WebCon.WorkFlow.SDK.ConfigAttributes;
+
+namespace WebconPdfSplitterAction;
+
+public class ExtractPagesToNewFormActionConfig : SplitterConnectionConfig
+{
+    [ConfigEditableText(
+        DisplayName = "Dozwolone kategorie zalacznikow",
+        Description = "Nazwy lub ID kategorii (grup) zalacznikow zrodlowych. Kilka rozdziel srednikiem. " +
+                      "Akcja wymaga dokladnie jednego PDF w tych kategoriach.",
+        IsRequired = true,
+        TagEvaluationMode = EvaluationMode.Default,
+        Order = 10)]
+    public string AllowedCategories { get; set; } = "";
+
+    [ConfigEditableText(
+        DisplayName = "Zakres stron do wyciecia",
+        Description = "Strony 1-based, inclusive, np. '3-5'. Mozna przeciagnac tag/stala z panelu po prawej.",
+        IsRequired = true,
+        TagEvaluationMode = EvaluationMode.Default,
+        Order = 11)]
+    public string PageRange { get; set; } = "";
+
+    [ConfigEditableText(
+        DisplayName = "Target workflow ID",
+        Description = "ID obiegu, w ktorym ma powstac nowy element weryfikacyjny. Liczba lub tag/stala.",
+        IsRequired = true,
+        TagEvaluationMode = EvaluationMode.Default,
+        Order = 12)]
+    public string TargetWorkflowId { get; set; } = "";
+
+    [ConfigEditableText(
+        DisplayName = "Target document type ID",
+        Description = "ID typu formularza nowego elementu. Liczba lub tag/stala.",
+        IsRequired = true,
+        TagEvaluationMode = EvaluationMode.Default,
+        Order = 13)]
+    public string TargetDocTypeId { get; set; } = "";
+
+    [ConfigEditableText(
+        DisplayName = "Start path ID",
+        Description = "ID sciezki, ktora nowy element ma wystartowac. Liczba lub tag/stala.",
+        IsRequired = true,
+        TagEvaluationMode = EvaluationMode.Default,
+        Order = 14)]
+    public string StartPathId { get; set; } = "";
+
+    [ConfigEditableBool(
+        DisplayName = "Usun wyciete strony ze zrodla",
+        Description = "Wlaczone: po wycieciu usuwa te strony z zalacznika zrodlowego (przenoszenie). " +
+                      "Wylaczone: zrodlo zostaje nietkniete (kopiowanie).",
+        Order = 15)]
+    public bool RemoveFromSource { get; set; }
+}
