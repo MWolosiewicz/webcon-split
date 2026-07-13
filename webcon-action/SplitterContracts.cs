@@ -44,3 +44,17 @@ public sealed class PatternPayload
     [Newtonsoft.Json.JsonProperty("weight")]
     public double Weight { get; set; } = 1.0;
 }
+
+public sealed class PageOpResult
+{
+    public string OutputFileName { get; set; } = "";
+    public int PageCount { get; set; }
+    public string FileContentBase64 { get; set; } = "";
+    public List<string> Warnings { get; set; } = new();
+}
+
+public sealed class MergeInput
+{
+    public string FileName { get; set; } = "";
+    public byte[] Content { get; set; } = System.Array.Empty<byte>();
+}
