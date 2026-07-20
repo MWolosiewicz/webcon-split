@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Threading.Tasks;
 using WebCon.WorkFlow.SDK.ActionPlugins;
@@ -12,7 +12,7 @@ public class RemovePagesAction : CustomAction<RemovePagesActionConfig>
 {
     public override async Task RunAsync(RunCustomActionParams args)
     {
-        var pluginVersion = typeof(RemovePagesAction).Assembly.GetName().Version?.ToString(3) ?? "?";
+        var pluginVersion = typeof(RemovePagesAction).Assembly.GetName().Version?.ToString() ?? "?";
         try
         {
             var source = await AttachmentSourceHelper.GetSinglePdfInCategoriesAsync(

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Threading.Tasks;
@@ -14,7 +14,7 @@ public class MergeAttachmentsAction : CustomAction<MergeAttachmentsActionConfig>
 {
     public override async Task RunAsync(RunCustomActionParams args)
     {
-        var pluginVersion = typeof(MergeAttachmentsAction).Assembly.GetName().Version?.ToString(3) ?? "?";
+        var pluginVersion = typeof(MergeAttachmentsAction).Assembly.GetName().Version?.ToString() ?? "?";
         try
         {
             var itemListId = Configuration.ItemList?.ItemListId ?? 0;

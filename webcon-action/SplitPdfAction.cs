@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Globalization;
@@ -22,7 +22,7 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
     {
         // wersja paczki pluginu w logu operacji - pozwala od razu widziec,
         // ktora wersja dodatku faktycznie wykonala akcje
-        var pluginVersion = typeof(SplitPdfAction).Assembly.GetName().Version?.ToString(3) ?? "?";
+        var pluginVersion = typeof(SplitPdfAction).Assembly.GetName().Version?.ToString() ?? "?";
         try
         {
             var targetWorkflowId = ParseId(Configuration.TargetWorkflowId, "Target workflow ID");
@@ -80,6 +80,10 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
                     await newDocument.SetFieldValueAsync(
                         Configuration.ReviewReasonsFieldId,
                         string.Join(Environment.NewLine, detected.ReviewReasons));
+
+                if (Configuration.ParentElementIdFieldId > 0)
+                    await newDocument.SetFieldValueAsync(
+                        Configuration.ParentElementIdFieldId, args.Context.CurrentDocument.ID);
 
                 var started = await documentsManager.StartNewWorkFlowAsync(
                     new StartNewWorkFlowParams(newDocument, startPathId));

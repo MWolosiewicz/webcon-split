@@ -307,6 +307,7 @@ podpisana strong name. Wymaga licencji SDK.
 | Timeout in seconds | nie (300) | Zwiększ dla dużych paczek z OCR |
 | Requires review field ID | nie | Pole tak/nie na `requiresReview`; puste = pomijane |
 | Review reasons field ID | nie | Pole tekstowe (wieloliniowe) na powody. Ustawione → powody tylko do pola; puste → do komentarza elementu (bez duplikacji) |
+| Parent element ID field ID | nie | Pole (liczbowe lub tekstowe) na ID elementu nadrzędnego (paczki skanów); puste = pomijane. Relacja systemowa rodzic–dziecko jest ustawiana zawsze |
 
 ID obiektów: Designer Studio → właściwości obiektu → ID (włącz „Pokaż identyfikatory
 obiektów", jeśli niewidoczne).

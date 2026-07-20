@@ -52,4 +52,12 @@ public class SplitPdfActionConfig : SplitterConnectionConfig
                       "Ustawione = powody nie dubluja sie w komentarzu. Puste = powody do komentarza.",
         Order = 15)]
     public int ReviewReasonsFieldId { get; set; }
+
+    [ConfigEditableFormFieldID(
+        DisplayName = "Parent element ID field ID",
+        Description = "Opcjonalne: pole w obiegu docelowym, do ktorego akcja wpisze ID elementu " +
+                      "nadrzednego (paczki skanow). Puste = nie zapisuj. Relacja systemowa " +
+                      "rodzic-dziecko jest ustawiana zawsze, niezaleznie od tego pola.",
+        Order = 16)]
+    public int ParentElementIdFieldId { get; set; }
 }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using System.IO;
 using System.Threading.Tasks;
@@ -14,7 +14,7 @@ public class ExtractPagesToNewFormAction : CustomAction<ExtractPagesToNewFormAct
 {
     public override async Task RunAsync(RunCustomActionParams args)
     {
-        var pluginVersion = typeof(ExtractPagesToNewFormAction).Assembly.GetName().Version?.ToString(3) ?? "?";
+        var pluginVersion = typeof(ExtractPagesToNewFormAction).Assembly.GetName().Version?.ToString() ?? "?";
         try
         {
             var targetWorkflowId = ParseId(Configuration.TargetWorkflowId, "Target workflow ID");
