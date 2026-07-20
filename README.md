@@ -279,15 +279,19 @@ na stronach. Uwierzytelnianie i nagłówek `X-Webcon-Element-Id` jak w `/api/spl
 
 ## Integracja z WEBCON
 
-Środowisko docelowe: **WEBCON BPS 2026.1**. Akcja: `WebconPdfSplitterAction.SplitPdfAction`
-(`CustomAction<SplitPdfActionConfig>`), zbudowana na `WEBCON.BPS.2026.SDK.Libraries`,
+Środowisko docelowe: **WEBCON BPS 2026.1** (domyślnie) lub **BPS 2025 R2**
+(`package.ps1 -Sdk 2025`). Akcja: `WebconPdfSplitterAction.SplitPdfAction`
+(`CustomAction<SplitPdfActionConfig>`), zbudowana na `WEBCON.BPS.<linia>.SDK.Libraries`,
 podpisana strong name. Wymaga licencji SDK.
 
 ### Rejestracja pluginu
 
-1. `powershell -File webcon-action\package.ps1` → `webcon-action\Publish\WebconPdfSplitterAction-<wersja>.zip`
+1. `powershell -File webcon-action\package.ps1 [-Sdk 2025|2026]` →
+   `webcon-action\Publish\WebconPdfSplitterAction-<linia BPS>-<wersja>.zip`,
+   np. `WebconPdfSplitterAction-2025r2-1.0.12.1.zip`
    (DLL pluginu + Newtonsoft.Json.dll + manifest; biblioteki SDK dostarcza host BPS).
-   Skrypt sam podbija wersję; wersja jest też w logu operacji (`SplitPdfAction vX.Y.Z`).
+   Skrypt sam podbija 4-częściową wersję (= wersja assembly); wersja jest też
+   w logu operacji (`SplitPdfAction vX.Y.Z.W`).
 2. Designer Studio → **Plugin packages** → **New package** → wskaż ZIP → **Verify plugins**.
 
 ### Konfiguracja akcji „SplitPdfAction"
@@ -509,7 +513,7 @@ uruchamia się ręcznie przeciw lokalnemu modelowi (poza pytest) do strojenia pr
 | `splitter/` | Serwis Python/FastAPI + `Dockerfile`, `docker-compose.yml`, `.env.example`, testy, skrypty |
 | `splitter/src/webcon_pdf_splitter/` | Kod serwisu (moduły opisane niżej) |
 | `splitter/docs/llm-prompt.md` | Manual placeholderów promptu LLM |
-| `webcon-action/` | Plugin C# (BPS 2026 SDK) + `package.ps1` budujący ZIP |
+| `webcon-action/` | Plugin C# (BPS 2026/2025 SDK, przełącznik `-Sdk`) + `package.ps1` budujący ZIP |
 | `docs/superpowers/` | Historia projektowa: specyfikacje i plany (migawki dzienne, nie bieżąca dokumentacja) |
 
 ### Moduły serwisu (`splitter/src/webcon_pdf_splitter/`)
