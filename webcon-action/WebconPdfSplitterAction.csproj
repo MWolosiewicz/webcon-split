@@ -1,7 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <!-- WEBCON BPS 2026 SDK plugins target .NET Standard 2.0 -->
+    <!-- WEBCON BPS SDK plugins target .NET Standard 2.0 -->
     <TargetFramework>netstandard2.0</TargetFramework>
+    <!-- linia SDK: 2026 (domyslna) lub 2025; wybor przez -p:BpsSdk=2025 -->
+    <BpsSdk Condition="'$(BpsSdk)' == ''">2026</BpsSdk>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <SignAssembly>true</SignAssembly>
@@ -10,7 +12,8 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="WEBCON.BPS.2026.SDK.Libraries" Version="26.1.6.209" />
+    <PackageReference Include="WEBCON.BPS.2026.SDK.Libraries" Version="26.1.6.209" Condition="'$(BpsSdk)' == '2026'" />
+    <PackageReference Include="WEBCON.BPS.2025.SDK.Libraries" Version="25.2.1.359" Condition="'$(BpsSdk)' == '2025'" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
 </Project>
