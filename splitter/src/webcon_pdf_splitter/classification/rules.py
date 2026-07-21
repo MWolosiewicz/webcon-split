@@ -15,6 +15,14 @@ class PageClassification:
     phrase_affinities: set[str] = field(default_factory=set)
 
 
+def normalize_text(value: str) -> str:
+    # OCR output is inconsistent with Polish diacritics, so both the page
+    # text and the patterns are folded to plain ASCII before matching.
+    decomposed = unicodedata.normalize("NFKD", value.replace("ł", "l").replace("Ł", "L"))
+    ascii_only = decomposed.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"\s+", " ", ascii_only.upper()).strip()
+
+
 class RuleBasedClassifier:
     def __init__(self, patterns: list[DocumentPattern]) -> None:
         self._patterns = patterns
@@ -88,8 +96,4 @@ class RuleBasedClassifier:
 
     @staticmethod
     def _normalize(value: str) -> str:
-        # OCR output is inconsistent with Polish diacritics, so both the page
-        # text and the patterns are folded to plain ASCII before matching.
-        decomposed = unicodedata.normalize("NFKD", value.replace("ł", "l").replace("Ł", "L"))
-        ascii_only = decomposed.encode("ascii", "ignore").decode("ascii")
-        return re.sub(r"\s+", " ", ascii_only.upper()).strip()
+        return normalize_text(value)

@@ -32,3 +32,10 @@ def test_header_with_diacritics_matches_ocr_text_without_them():
     result = classifier.classify_page("SWIADECTWO PRACY wydane pracownikowi", page_number=1)
 
     assert result.is_first_page is True
+
+
+def test_normalize_text_module_function_matches_classifier_behavior():
+    from webcon_pdf_splitter.classification.rules import normalize_text
+
+    assert normalize_text("Umowa  o\n pracĘ\tłącznie") == "UMOWA O PRACE LACZNIE"
+    assert normalize_text("   ") == ""
