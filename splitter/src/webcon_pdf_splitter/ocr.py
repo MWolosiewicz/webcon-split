@@ -73,12 +73,20 @@ class TextLayerWithOcrFallback:
         # inaczej krotki, ale realny tekst (albo pusty OCR przy braku binarki)
         # skasowalby oryginal (utrata danych).
         filled = []
+        not_improved = []
         for index, ocr_text in ocr_texts.items():
             if alnum_count(ocr_text) > alnum_count(texts[index]):
                 texts[index] = ocr_text
                 filled.append(index + 1)
+            else:
+                not_improved.append(index + 1)
         if filled:
             logger.info("OCR: uzupelniono tekst %s stron (strony: %s)", len(filled), filled)
+        if not_improved:
+            logger.info(
+                "OCR nie poprawil stron %s - zachowano tekst warstwy",
+                not_improved,
+            )
         return texts
 
 

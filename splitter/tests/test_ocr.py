@@ -119,6 +119,28 @@ def test_ocr_result_ignored_when_shorter_than_text_layer():
     assert result[0] == "Zalacznik nr 3 podpisany"
 
 
+def test_logs_pages_where_ocr_did_not_improve_text(caplog):
+    import logging
+
+    caplog.set_level(logging.INFO, logger="webcon_pdf_splitter.ocr")
+    ocr = _FakePageOcr({0: "", 1: "TEKST Z OCR PO ROZPOZNANIU SKANU"})
+    composite = TextLayerWithOcrFallback(
+        page_ocr=ocr,
+        text_layer=_FakeTextLayer(["Zalacznik nr 3 podpisany", ""]),  # obie < prog
+        min_text_chars=25,
+    )
+
+    composite.extract_page_texts("mixed.pdf")
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(
+        "OCR nie poprawil stron [1] - zachowano tekst warstwy" == message
+        for message in messages
+    )
+    # strona 2 zostala uzupelniona -> raportowana w dotychczasowym wpisie
+    assert any("uzupelniono" in message for message in messages)
+
+
 def test_ocr_failure_does_not_break_extraction():
     composite = TextLayerWithOcrFallback(
         page_ocr=_RaisingPageOcr(),
