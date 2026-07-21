@@ -1,6 +1,7 @@
 import base64
 import io
 import logging
+import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import uuid4
@@ -16,13 +17,14 @@ from webcon_pdf_splitter.classification.llm import (
 )
 from webcon_pdf_splitter.classification.pipeline import ClassificationPipeline
 from webcon_pdf_splitter.classification.prompts import PromptProvider
-from webcon_pdf_splitter.classification.rules import RuleBasedClassifier
+from webcon_pdf_splitter.classification.rules import RuleBasedClassifier, normalize_text
 from webcon_pdf_splitter.config import SplitterSettings
 from webcon_pdf_splitter.contracts import PageOpResult, PatternPayload, SplitResult
 from webcon_pdf_splitter.ocr import (
     PdfTextOcrEngine,
     TesseractPageOcr,
     TextLayerWithOcrFallback,
+    alnum_count,
 )
 from webcon_pdf_splitter.patterns import DocumentPattern, InMemoryPatternRepository
 from webcon_pdf_splitter.pdf_io import (
@@ -101,6 +103,38 @@ def _derive_name(original: str, suffix: str) -> str:
 
 def _page_count_of(pdf_bytes: bytes) -> int:
     return len(PdfReader(io.BytesIO(pdf_bytes)).pages)
+
+
+def _preview(value: str, limit: int) -> str:
+    collapsed = re.sub(r"\s+", " ", value).strip()
+    if len(collapsed) <= limit:
+        return collapsed
+    return collapsed[:limit] + "..."
+
+
+def _log_page_texts(page_texts: list[str], settings: SplitterSettings) -> None:
+    """Diagnostyka klasyfikacji: co faktycznie odczytano z kazdej strony.
+
+    Surowy fragment pokazuje jakosc odczytu (warstwa/OCR), znormalizowany
+    fragment jest w postaci, w ktorej klasyfikator szuka naglowkow i fraz
+    ze slownika - porownywalny 1:1 z konfiguracja wzorcow.
+    """
+    if not settings.log_page_text:
+        return
+    for index, text in enumerate(page_texts):
+        chars = alnum_count(text)
+        if chars == 0:
+            logger.info("Strona %s: 0 znakow (pusta)", index + 1)
+            continue
+        logger.info(
+            'Strona %s: %s znakow alnum | surowy(%s): "%s" | znorm(%s): "%s"',
+            index + 1,
+            chars,
+            settings.log_page_text_raw_chars,
+            _preview(text, settings.log_page_text_raw_chars),
+            settings.log_page_text_norm_chars,
+            _preview(normalize_text(text), settings.log_page_text_norm_chars),
+        )
 
 
 def parse_patterns_field(raw: str) -> list[DocumentPattern]:
@@ -208,6 +242,7 @@ async def _split(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         page_texts = ocr.extract_page_texts(str(source_path))
+        _log_page_texts(page_texts, settings)
         result = pipeline.split_pages(filename, page_texts)
 
         output_paths = split_pdf(source_path, Path(tmp) / "output", result.documents)
