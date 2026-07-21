@@ -194,7 +194,7 @@ weryfikacji, inaczej `completed`.
 
 `split_pdf` kopiuje **oryginalne strony** źródłowego PDF do plików wynikowych
 (bez ponownego kodowania, bez zmiany treści). Nazwa pliku:
-`NNN_Typ_dokumentu_strony_SSS-EEE.pdf` (znaki `spacja / \ :` zamieniane na `_`).
+`Typ_dokumentu_strony_SSS-EEE.pdf` (znaki `spacja / \ :` zamieniane na `_`).
 
 ## Konfiguracja serwisu
 

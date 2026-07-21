@@ -37,6 +37,15 @@ def test_pipeline_groups_pages_between_detected_first_pages():
     assert result.documents[1].endPage == 4
 
 
+def test_output_file_name_has_no_numeric_prefix():
+    result = _make_pipeline().split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca"],
+    )
+
+    assert result.documents[0].outputFileName == "Umowa_o_prace_strony_001-001.pdf"
+
+
 def test_empty_page_skips_llm_and_glues_with_review():
     stub = _StubLlm(
         responses={

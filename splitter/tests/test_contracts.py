@@ -14,7 +14,7 @@ def test_split_result_serializes_required_fields():
                 requiresReview=False,
                 startPage=1,
                 endPage=3,
-                outputFileName="001_Umowa_o_prace_strony_001-003.pdf",
+                outputFileName="Umowa_o_prace_strony_001-003.pdf",
                 signals=["header_match:UMOWA O PRACE"],
                 metadata={"employeeName": "Jan Kowalski"},
             )
@@ -37,7 +37,7 @@ def test_detected_document_review_reasons_default_and_serialization():
         requiresReview=True,
         startPage=1,
         endPage=2,
-        outputFileName="001_Nieznany_typ_dokumentu_strony_001-002.pdf",
+        outputFileName="Nieznany_typ_dokumentu_strony_001-002.pdf",
     )
     assert document.reviewReasons == []
 

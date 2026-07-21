@@ -179,7 +179,7 @@ class ClassificationPipeline:
                     startPage=segment.start_page,
                     endPage=segment.end_page,
                     outputFileName=self._file_name(
-                        document_index, segment.document_type, segment.start_page, segment.end_page
+                        segment.document_type, segment.start_page, segment.end_page
                     ),
                     signals=segment.signals,
                     metadata={},
@@ -320,11 +320,11 @@ class ClassificationPipeline:
         return "; ".join(parts)
 
     @staticmethod
-    def _file_name(index: int, document_type: str, start_page: int, end_page: int) -> str:
+    def _file_name(document_type: str, start_page: int, end_page: int) -> str:
         safe_type = (
             document_type.replace(" ", "_")
             .replace("/", "_")
             .replace("\\", "_")
             .replace(":", "_")
         )
-        return f"{index:03d}_{safe_type}_strony_{start_page:03d}-{end_page:03d}.pdf"
+        return f"{safe_type}_strony_{start_page:03d}-{end_page:03d}.pdf"
