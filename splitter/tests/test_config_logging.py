@@ -33,3 +33,20 @@ def test_ocr_settings_read_from_env(monkeypatch):
     assert settings.ocr_enabled is False
     assert settings.ocr_min_text_chars == 40
     assert settings.ocr_languages == "pol"
+
+
+def test_page_text_logging_defaults():
+    settings = SplitterSettings(_env_file=None)
+    assert settings.log_page_text is True
+    assert settings.log_page_text_raw_chars == 1200
+    assert settings.log_page_text_norm_chars == 300
+
+
+def test_page_text_logging_read_from_env(monkeypatch):
+    monkeypatch.setenv("SPLITTER_LOG_PAGE_TEXT", "false")
+    monkeypatch.setenv("SPLITTER_LOG_PAGE_TEXT_RAW_CHARS", "500")
+    monkeypatch.setenv("SPLITTER_LOG_PAGE_TEXT_NORM_CHARS", "100")
+    settings = SplitterSettings(_env_file=None)
+    assert settings.log_page_text is False
+    assert settings.log_page_text_raw_chars == 500
+    assert settings.log_page_text_norm_chars == 100
