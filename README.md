@@ -204,7 +204,10 @@ opcji) są ignorowane — nie wywracają startu. Szablon: [`splitter/.env.exampl
 | Zmienna | Domyślnie | Opis |
 |---|---|---|
 | `SPLITTER_API_TOKEN` | (puste) | Wymusza `Authorization: Bearer <token>` na `/api/split`. Puste = brak autoryzacji |
-| `SPLITTER_LOG_LEVEL` | `INFO` | Poziom logów w `docker logs`. Na INFO: decyzja klasyfikacji per strona + podsumowanie z powodami |
+| `SPLITTER_LOG_LEVEL` | `INFO` | Poziom logów w `docker logs`. Na INFO: tekst odczytany z każdej strony (patrz niżej), decyzja klasyfikacji per strona + podsumowanie z powodami |
+| `SPLITTER_LOG_PAGE_TEXT` | `true` | Loguje per strona tekst odczytany z warstwy/OCR: fragment surowy + fragment znormalizowany (ASCII, wielkie litery) — dokładnie w postaci, w jakiej klasyfikator szuka nagłówków i fraz. Diagnostyka „czemu słownik nie zadziałał" |
+| `SPLITTER_LOG_PAGE_TEXT_RAW_CHARS` | `1200` | Limit znaków surowego fragmentu w logu |
+| `SPLITTER_LOG_PAGE_TEXT_NORM_CHARS` | `300` | Limit znaków znormalizowanego fragmentu w logu |
 | `SPLITTER_WORK_DIR` | `/app/work` | Katalog plików tymczasowych (czyszczony po zadaniu) |
 | `SPLITTER_MIN_AUTO_ACCEPT_CONFIDENCE` | `0.90` | Poniżej → dokument dostaje `requiresReview` |
 | `SPLITTER_MIN_REVIEW_CONFIDENCE` | `0.70` | Minimalna pewność, przy której werdykt LLM jest brany pod uwagę |
@@ -219,6 +222,21 @@ opcji) są ignorowane — nie wywracają startu. Szablon: [`splitter/.env.exampl
 | `SPLITTER_OCR_LANGUAGES` | `pol+eng` | Języki Tesseracta (muszą być w obrazie) |
 | `SPLITTER_OCR_DPI` | `300` | Rozdzielczość renderu strony do OCR |
 | `SPLITTER_OCR_TIMEOUT_SECONDS` | `30` | Limit czasu OCR jednej strony |
+
+**Diagnostyka klasyfikacji w logach** — przy `SPLITTER_LOG_PAGE_TEXT=true` każde
+żądanie `/api/split` loguje po ekstrakcji tekstu wpis per strona, np.:
+
+```
+Strona 2: 830 znakow alnum | surowy(1200): "Faktura VAT nr 12/2026 ..." | znorm(300): "FAKTURA VAT NR 12/2026 ..."
+Strona 5: 0 znakow (pusta)
+```
+
+Fragment `znorm` porównuje się 1:1 z nagłówkami i frazami ze słownika (nagłówek
+musi wystąpić w pierwszych ~1200 znormalizowanych znakach). Dodatkowo OCR loguje
+`OCR: uzupelniono tekst N stron (strony: [...])` oraz `OCR nie poprawil stron [...]
+- zachowano tekst warstwy` — z logu zawsze wynika, skąd pochodzi tekst strony.
+Uwaga: przy włączonym logowaniu fragmenty treści dokumentów trafiają do logów
+kontenera — patrz [Zalecenia produkcyjne](#zalecenia-produkcyjne).
 
 Plik `.env` jest czytany przy każdym żądaniu (zmiany bez restartu procesu; zmienna
 środowiskowa procesu ma pierwszeństwo przed plikiem). **Zmiana `.env` w Dockerze:**
@@ -432,6 +450,29 @@ curl http://localhost:8010/health   # -> {"status":"ok"}
 - Aktualizacja kodu/obrazu: `docker compose up -d --build`. Logi:
   `docker logs webcon-pdf-splitter`.
 
+### Aktualizacja wdrożenia (nowa wersja z repozytorium)
+
+Na serwerze, na którym działa kontener:
+
+```bash
+cd <katalog-repo>          # klon https://github.com/MWolosiewicz/webcon-split
+git pull                   # pobierz aktualny main
+cd splitter
+docker compose up -d --build   # przebuduj obraz i odtwórz kontener
+curl http://localhost:8010/health              # -> {"status":"ok"}
+docker logs --tail 20 webcon-pdf-splitter      # sanity check logów
+```
+
+- `docker compose up -d --build` robi całość: buduje obraz z nowego kodu i
+  podmienia kontener tylko wtedy, gdy coś się zmieniło. Lokalny `.env` zostaje —
+  nie jest częścią repo ani obrazu.
+- Sama zmiana `.env` (bez zmiany kodu) nie wymaga budowania: wystarczy
+  `docker compose up -d` (w razie potrzeby `--force-recreate`); `docker compose
+  restart` **nie** wczytuje `.env` na nowo.
+- Zmiany wyłącznie w `splitter/` nie dotykają paczki WEBCON — importu pluginu
+  nie trzeba ponawiać. Nową paczkę importuje się tylko po zmianach w
+  `webcon-action/` (patrz [Rejestracja pluginu](#rejestracja-pluginu)).
+
 ### Bez Dockera
 
 ```powershell
@@ -468,7 +509,10 @@ bez przebudowy obrazu — [`splitter/docs/llm-prompt.md`](splitter/docs/llm-prom
 
 - HTTPS lub wydzielona/zaufana sieć między WEBCON a splitterem; token API zawsze ustawiony.
 - Limit rozmiaru PDF na reverse proxy (`client_max_body_size`).
-- Logi nie zawierają treści dokumentów — tylko metadane i statusy.
+- Przy domyślnym `SPLITTER_LOG_PAGE_TEXT=true` logi zawierają **fragmenty treści
+  dokumentów** (diagnostyka klasyfikacji) — traktuj `docker logs` jak dane wrażliwe
+  (dostęp, retencja/rotacja) albo ustaw `SPLITTER_LOG_PAGE_TEXT=false`, by logować
+  wyłącznie metadane i statusy.
 
 ## Testy
 
@@ -541,7 +585,8 @@ uruchamia się ręcznie przeciw lokalnemu modelowi (poza pytest) do strojenia pr
 | `test_api_split.py` | `/api/split` end-to-end: token (brak/zły/dobry), pliki wynikowe w base64, nazwy plików RFC 2047 z .NET |
 | `test_api_pages.py` | `/api/pages/remove` / `extract` / `merge`: poprawne operacje, złe zakresy, nie-PDF, token |
 | `test_split_patterns.py` | Pole `patterns` żądania: mapowanie na `DocumentPattern`, wartości domyślne, odrzucanie złego JSON/schematu, podział bez wzorców (wszystko „Nieznany typ dokumentu") |
-| `test_config_logging.py` | Domyślne ustawienia (log level, OCR), czytanie env, `configure_logging`, wybór silnika OCR wg `SPLITTER_OCR_ENABLED` |
+| `test_config_logging.py` | Domyślne ustawienia (log level, OCR, logowanie tekstu stron), czytanie env, `configure_logging`, wybór silnika OCR wg `SPLITTER_OCR_ENABLED` |
+| `test_page_text_logging.py` | Diagnostyczny log tekstu stron: fragment surowy + znormalizowany, limity długości, strona pusta, wyłączenie flagą |
 | `test_contracts.py` | Serializacja modeli odpowiedzi |
 | `test_normalization.py` | Normalizacja ASCII (diakrytyki, `ł`→`l`, wielkość liter, kompresja spacji) po obu stronach porównania |
 | `test_rule_classifier.py` | Punktacja reguł: nagłówek, frazy, frazy wykluczające, progi pierwszej strony i braku dopasowania |
