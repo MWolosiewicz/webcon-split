@@ -23,6 +23,17 @@ def normalize_text(value: str) -> str:
     return re.sub(r"\s+", " ", ascii_only.upper()).strip()
 
 
+# OCR czesto myli te cyfry z literami. Sprowadzamy je do liter wylacznie na
+# potrzeby dopasowania naglowka - inaczej naglowek zepsuty przez OCR nie
+# zostaje rozpoznany i strona po cichu trafia jako doklejka do poprzedniego
+# dokumentu. Frazy i wlasciwy tekst strony pozostaja bez zmian.
+_OCR_DIGIT_TO_LETTER = str.maketrans({"0": "O", "1": "I", "5": "S"})
+
+
+def fold_ocr_digits(value: str) -> str:
+    return value.translate(_OCR_DIGIT_TO_LETTER)
+
+
 class RuleBasedClassifier:
     def __init__(self, patterns: list[DocumentPattern]) -> None:
         self._patterns = patterns
@@ -33,6 +44,7 @@ class RuleBasedClassifier:
 
     def classify_page(self, text: str, page_number: int) -> PageClassification:
         normalized = self._normalize(text)
+        header_zone = fold_ocr_digits(normalized[:1200])
         best: PageClassification | None = None
         affinities: set[str] = set()
 
@@ -41,7 +53,7 @@ class RuleBasedClassifier:
             if not header:
                 continue
 
-            header_match = header in normalized[:1200]
+            header_match = fold_ocr_digits(header) in header_zone
             phrase_hits = sum(
                 1 for phrase in pattern.phrases if self._normalize(phrase) in normalized
             )

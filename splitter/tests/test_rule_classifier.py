@@ -175,6 +175,38 @@ def test_excluded_phrase_blocks_affinity():
     assert result.phrase_affinities == set()
 
 
+@pytest.mark.parametrize(
+    "ocr_text",
+    [
+        "SWIADECTW0 PRACY wydane dnia",  # O -> 0
+        "SW1ADECTWO PRACY wydane dnia",  # I -> 1
+        "5WIADECTWO PRACY wydane dnia",  # S -> 5
+    ],
+)
+def test_header_recognized_despite_ocr_digit_confusion(ocr_text):
+    # OCR czesto myli litery z cyframi (O<->0, I<->1, S<->5). Naglowek
+    # zepsuty w ten sposob nadal powinien zostac rozpoznany - inaczej
+    # strona po cichu trafia jako doklejka do poprzedniego dokumentu.
+    classifier = RuleBasedClassifier(
+        patterns=[
+            DocumentPattern(
+                document_type="Swiadectwo pracy",
+                header="SWIADECTWO PRACY",
+                phrases=["okres zatrudnienia"],
+                excluded_phrases=[],
+                weight=1.0,
+                active=True,
+            )
+        ]
+    )
+
+    result = classifier.classify_page(ocr_text, page_number=3)
+
+    assert result.is_first_page is True
+    assert result.document_type == "Swiadectwo pracy"
+    assert result.confidence == pytest.approx(0.80)
+
+
 def test_known_document_types_are_sorted_and_unique():
     classifier = RuleBasedClassifier(
         patterns=[

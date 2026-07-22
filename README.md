@@ -132,6 +132,12 @@ litery, kompresja spacji) — po obu stronach porównania, więc znosi różnice
 - pewność ograniczona do 1.00; **strona pierwsza dokumentu** przy pewności ≥ 0.70;
 - gdy najlepszy wynik < 0.50 → „Nieznany typ dokumentu" (pewność 0.20).
 
+Przy samym dopasowaniu **nagłówka** cyfry mylone przez OCR są dodatkowo
+sprowadzane do liter (`0→O`, `1→I`, `5→S`), więc nagłówek zniekształcony przez
+skan (np. `5WIADECTWO`) nadal zostaje rozpoznany — strona zaczyna nowy dokument,
+zamiast trafić po cichu jako doklejka do poprzedniego. Frazy i właściwy tekst
+strony pozostają bez zmian.
+
 Efekt progów przy domyślnej wadze 1,0: sam trafiony nagłówek daje równo 0.80
 i przechodzi próg auto-akceptacji (0.80); nagłówek + 2 trafione frazy dają
 pełne 1.00.
@@ -488,6 +494,47 @@ docker logs --tail 20 webcon-pdf-splitter      # sanity check logów
 - Zmiany wyłącznie w `splitter/` nie dotykają paczki WEBCON — importu pluginu
   nie trzeba ponawiać. Nową paczkę importuje się tylko po zmianach w
   `webcon-action/` (patrz [Rejestracja pluginu](#rejestracja-pluginu)).
+
+### Wdrożenie gałęzi testowej (bez scalania do `main`)
+
+Gdy chcesz sprawdzić wersję na serwerze **przed** scaleniem do `main` (np. gałąź
+`branch/...` wypchniętą na GitHub), przełącz repozytorium serwera na tę gałąź
+i przebuduj obraz. Zwykłe `git pull` ciągnie gałąź aktualnie wybraną na serwerze
+(u nas zwykle `main`), dlatego gałąź trzeba najpierw jawnie wskazać przez
+`git checkout`.
+
+Na serwerze, na którym działa kontener:
+
+```bash
+cd <katalog-repo>
+git fetch origin
+git checkout <nazwa-galezi>        # np. branch/splitter-document-classify-v2
+git pull                           # dociagnij najnowszy stan tej galezi
+cd splitter
+docker compose up -d --build       # przebuduj obraz i odtworz kontener
+curl http://localhost:8010/health              # -> {"status":"ok"}
+docker logs --tail 20 webcon-pdf-splitter      # sanity check logow
+```
+
+Powrót do `main` (po testach albo po scaleniu gałęzi):
+
+```bash
+cd <katalog-repo>
+git checkout main
+git pull                           # aktualny main (z ewentualnie scalona zmiana)
+cd splitter
+docker compose up -d --build
+curl http://localhost:8010/health
+```
+
+- Gałąź musi być wcześniej wypchnięta na GitHub (`git push`), inaczej
+  `git checkout` nie znajdzie jej na serwerze.
+- Serwer zostaje na wybranej gałęzi, dopóki go nie przełączysz z powrotem —
+  kolejne `git pull` ciągną **tę** gałąź, nie `main`. Po scaleniu zmiany wróć
+  serwer na `main`, żeby nie utknął na gałęzi roboczej.
+- `.env` zostaje nietknięty — nie jest w repo, `git checkout` go nie rusza.
+- Jak przy zwykłej aktualizacji: obraz budowany jest lokalnie z kodu, a zmiany
+  wyłącznie w `splitter/` nie wymagają ponownego importu pluginu WEBCON.
 
 ### Bez Dockera
 

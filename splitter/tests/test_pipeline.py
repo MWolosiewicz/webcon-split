@@ -198,6 +198,24 @@ def test_page_with_foreign_type_phrases_is_glued_and_flagged():
     assert result.documents[0].requiresReview is True
 
 
+def test_page_with_ocr_broken_header_starts_new_document():
+    # strona 3 ma naglowek nowego typu zepsuty przez OCR (S -> 5); mimo to
+    # powinna rozpoczac nowy dokument, a nie zostac doklejona do umowy
+    result = _make_pipeline().split_pages(
+        "scan.pdf",
+        [
+            "UMOWA O PRACE zawarta z pracodawca",
+            "wynagrodzenie zasadnicze wynosi",
+            "5WIADECTWO PRACY okres zatrudnienia",
+        ],
+    )
+
+    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
+        ("Umowa o prace", 1, 2),
+        ("Swiadectwo pracy", 3, 3),
+    ]
+
+
 def test_fully_unknown_bundle_is_single_unknown_document():
     result = _make_pipeline().split_pages("scan.pdf", ["obca 1", "obca 2"])
 
