@@ -2,6 +2,8 @@ import base64
 import io
 import logging
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import uuid4
@@ -44,14 +46,38 @@ def get_settings() -> SplitterSettings:
     return SplitterSettings()
 
 
+# jobId biezacego zadania /api/split - przy rownoleglych zadaniach logi
+# roznych paczek przeplataja sie w docker logs; prefiks [job=...] pozwala
+# je rozdzielic i skorelowac z logiem operacji akcji WEBCON
+_JOB_ID: ContextVar[str] = ContextVar("job_id", default="")
+
+
+class _JobIdFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        job_id = _JOB_ID.get()
+        record.job_id = f" [job={job_id}]" if job_id else ""
+        return True
+
+
+@contextmanager
+def job_log_context(job_id: str):
+    token = _JOB_ID.set(job_id)
+    try:
+        yield
+    finally:
+        _JOB_ID.reset(token)
+
+
 def configure_logging(settings: SplitterSettings) -> None:
     # uvicorn configures only its own loggers; without this, application
     # logger.info(...) calls never reach docker logs.
     logging.basicConfig(
         level=settings.log_level.upper(),
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        format="%(asctime)s %(levelname)s %(name)s%(job_id)s: %(message)s",
         force=True,
     )
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(_JobIdFilter())
 
 
 configure_logging(get_settings())
@@ -176,6 +202,7 @@ def build_ocr_engine(settings: SplitterSettings):
                 languages=settings.ocr_languages,
                 dpi=settings.ocr_dpi,
                 timeout_seconds=settings.ocr_timeout_seconds,
+                workers=settings.ocr_workers,
             ),
             min_text_chars=settings.ocr_min_text_chars,
         )
@@ -202,13 +229,14 @@ async def split_pdf_endpoint(
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
 
     job_id = str(uuid4())
-    logger.info(
-        "Przyjeto '%s' do podzialu (jobId=%s, webconElementId=%s)",
-        filename,
-        job_id,
-        webcon_element_id,
-    )
-    result = await _split(settings, file, patterns, filename)
+    with job_log_context(job_id):
+        logger.info(
+            "Przyjeto '%s' do podzialu (jobId=%s, webconElementId=%s)",
+            filename,
+            job_id,
+            webcon_element_id,
+        )
+        result = await _split(settings, file, patterns, filename)
     # identyfikator korelacyjny: akcja WEBCON zapisuje go w logu operacji
     result.jobId = job_id
     return result

@@ -93,9 +93,12 @@ class TextLayerWithOcrFallback:
 class TesseractPageOcr:
     """OCR wybranych stron przez Tesseract (pypdfium2 render -> pytesseract).
 
-    Laduje dokument PDFium raz na wywolanie. Per strona lapie bledy
-    (timeout/render/brak binarki) i zwraca pusty tekst dla tej strony,
-    aby OCR nigdy nie wywracal calego zadania.
+    Laduje dokument PDFium raz na wywolanie. Render stron jest sekwencyjny
+    (PDFium nie jest thread-safe), ale sam OCR (proces tesseract per strona)
+    biegnie rownolegle w `workers` watkach - partiami po `workers` stron,
+    zeby nie trzymac w pamieci wszystkich zrenderowanych bitmap naraz.
+    Per strona lapie bledy (timeout/render/brak binarki) i zwraca pusty
+    tekst dla tej strony, aby OCR nigdy nie wywracal calego zadania.
     """
 
     def __init__(
@@ -103,37 +106,62 @@ class TesseractPageOcr:
         languages: str = "pol+eng",
         dpi: int = 300,
         timeout_seconds: int = 30,
+        workers: int = 2,
     ) -> None:
         self._languages = languages
         self._dpi = dpi
         self._timeout_seconds = timeout_seconds
+        self._workers = max(1, workers)
+
+    def _ocr_image(self, image) -> str:
+        import pytesseract
+
+        return pytesseract.image_to_string(
+            image,
+            lang=self._languages,
+            timeout=self._timeout_seconds,
+        )
 
     def ocr_pages(self, pdf_path: str, page_indices: list[int]) -> dict[int, str]:
         if not page_indices:
             return {}
+        from concurrent.futures import ThreadPoolExecutor
+
         import pypdfium2 as pdfium
-        import pytesseract
 
         results: dict[int, str] = {}
         pdf = pdfium.PdfDocument(pdf_path)
         try:
-            for index in page_indices:
-                try:
-                    page = pdf[index]
-                    bitmap = page.render(scale=self._dpi / 72.0)
-                    image = bitmap.to_pil()
-                    results[index] = pytesseract.image_to_string(
-                        image,
-                        lang=self._languages,
-                        timeout=self._timeout_seconds,
-                    )
-                except Exception:
-                    logger.warning(
-                        "OCR strony %s nie powiodl sie - strona pusta",
-                        index + 1,
-                        exc_info=True,
-                    )
-                    results[index] = ""
+            with ThreadPoolExecutor(max_workers=self._workers) as pool:
+                for start in range(0, len(page_indices), self._workers):
+                    batch = page_indices[start : start + self._workers]
+                    images = {}
+                    for index in batch:
+                        try:
+                            page = pdf[index]
+                            bitmap = page.render(scale=self._dpi / 72.0)
+                            images[index] = bitmap.to_pil()
+                        except Exception:
+                            logger.warning(
+                                "OCR strony %s nie powiodl sie - strona pusta",
+                                index + 1,
+                                exc_info=True,
+                            )
+                            results[index] = ""
+                    futures = {
+                        index: pool.submit(self._ocr_image, image)
+                        for index, image in images.items()
+                    }
+                    for index, future in futures.items():
+                        try:
+                            results[index] = future.result()
+                        except Exception:
+                            logger.warning(
+                                "OCR strony %s nie powiodl sie - strona pusta",
+                                index + 1,
+                                exc_info=True,
+                            )
+                            results[index] = ""
         finally:
             pdf.close()
         return results

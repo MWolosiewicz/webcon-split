@@ -157,6 +157,62 @@ def test_ocr_failure_does_not_break_extraction():
     assert result[1] == ""
 
 
+def _two_blank_pages_pdf(tmp_path):
+    from pypdf import PdfWriter
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    writer.add_blank_page(width=200, height=200)
+    pdf_path = tmp_path / "dwie-strony.pdf"
+    with open(pdf_path, "wb") as handle:
+        writer.write(handle)
+    return pdf_path
+
+
+def test_ocr_pages_run_in_parallel(tmp_path, monkeypatch):
+    import threading
+
+    pdf_path = _two_blank_pages_pdf(tmp_path)
+    # bariera na 2 watki: jesli OCR stron bylby sekwencyjny, pierwszy wait()
+    # przekroczy timeout i test nie przejdzie
+    barrier = threading.Barrier(2, timeout=5)
+
+    def fake_ocr_image(self, image):
+        barrier.wait()
+        return "TEKST Z OCR"
+
+    monkeypatch.setattr(TesseractPageOcr, "_ocr_image", fake_ocr_image)
+    engine = TesseractPageOcr(workers=2)
+
+    result = engine.ocr_pages(str(pdf_path), [0, 1])
+
+    assert result == {0: "TEKST Z OCR", 1: "TEKST Z OCR"}
+
+
+def test_parallel_ocr_error_in_one_page_keeps_other_pages(tmp_path, monkeypatch):
+    import threading
+
+    pdf_path = _two_blank_pages_pdf(tmp_path)
+    lock = threading.Lock()
+    calls = []
+
+    def fake_ocr_image(self, image):
+        with lock:
+            calls.append(1)
+            fail = len(calls) == 1
+        if fail:
+            raise RuntimeError("tesseract timeout")
+        return "TEKST Z OCR"
+
+    monkeypatch.setattr(TesseractPageOcr, "_ocr_image", fake_ocr_image)
+    engine = TesseractPageOcr(workers=2)
+
+    result = engine.ocr_pages(str(pdf_path), [0, 1])
+
+    # jedna strona pada -> pusta, druga rozpoznana; zadanie sie nie wywraca
+    assert sorted(result.values()) == ["", "TEKST Z OCR"]
+
+
 @pytest.mark.skipif(_TESSERACT_MISSING, reason="brak binarki tesseract")
 def test_tesseract_ocr_recognizes_rendered_text(tmp_path):
     from PIL import Image, ImageDraw, ImageFont
