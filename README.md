@@ -126,11 +126,16 @@ lub opcją „searchable PDF" na skanerach).
 tekście **znormalizowanym do ASCII** (fold `ł`→`l`, usunięcie diakrytyków, wielkie
 litery, kompresja spacji) — po obu stronach porównania, więc znosi różnice zapisu:
 
-- **nagłówek** wzorca znaleziony w pierwszych ~1200 znakach → `+0.78 × waga`;
+- **nagłówek** wzorca znaleziony w pierwszych ~1200 znakach → `+0.80 + 0.10 × waga`
+  (waga jest dodatkiem, nie mnożnikiem: waga 1,0 → 0.90, waga 2,0 → pełne 1.00);
 - każde trafienie **frazy** → `+min(0.18, liczba_trafień × 0.06)`;
 - trafiona **fraza wykluczająca** → wzorzec całkowicie pomijany;
-- pewność ograniczona do 0.99; **strona pierwsza dokumentu** przy pewności ≥ 0.70;
+- pewność ograniczona do 1.00; **strona pierwsza dokumentu** przy pewności ≥ 0.70;
 - gdy najlepszy wynik < 0.50 → „Nieznany typ dokumentu" (pewność 0.20).
+
+Efekt progów: sam trafiony nagłówek przy domyślnej wadze 1,0 daje 0.90 i
+przekracza próg auto-akceptacji (0.80) — frazy nie są konieczne do
+automatycznego zatwierdzenia, podnoszą tylko pewność.
 
 Frazy trafione, ale bez nagłówka, tworzą „powinowactwo" typu (używane niżej).
 
@@ -182,7 +187,7 @@ robi to operator przy weryfikacji. LLM proponuje też nowe typy i frazy
 ### 5. Weryfikacja i powody
 
 Dokument dostaje `requiresReview = true`, gdy jest doklejona strona
-(`forced_review`) **lub** pewność < `SPLITTER_MIN_AUTO_ACCEPT_CONFIDENCE` (0.90).
+(`forced_review`) **lub** pewność < `SPLITTER_MIN_AUTO_ACCEPT_CONFIDENCE` (0.80).
 `reviewReasons` (lista po polsku) zawiera m.in.: nierozpoznany typ, strona bez
 tekstu, strona doklejona bez dopasowania (z pasującymi frazami innych typów i
 propozycją LLM), odrzucony werdykt niespójny, pewność poniżej progu. `signals`
@@ -209,7 +214,7 @@ opcji) są ignorowane — nie wywracają startu. Szablon: [`splitter/.env.exampl
 | `SPLITTER_LOG_PAGE_TEXT_RAW_CHARS` | `1200` | Limit znaków surowego fragmentu w logu |
 | `SPLITTER_LOG_PAGE_TEXT_NORM_CHARS` | `300` | Limit znaków znormalizowanego fragmentu w logu |
 | `SPLITTER_WORK_DIR` | `/app/work` | Katalog plików tymczasowych (czyszczony po zadaniu) |
-| `SPLITTER_MIN_AUTO_ACCEPT_CONFIDENCE` | `0.90` | Poniżej → dokument dostaje `requiresReview` |
+| `SPLITTER_MIN_AUTO_ACCEPT_CONFIDENCE` | `0.80` | Poniżej → dokument dostaje `requiresReview` (0.80 = sam dobry nagłówek z wagą 1,0 przechodzi) |
 | `SPLITTER_MIN_REVIEW_CONFIDENCE` | `0.70` | Minimalna pewność, przy której werdykt LLM jest brany pod uwagę |
 | `SPLITTER_LLM_ENABLED` | `false` | Włącza fallback LLM (wymaga endpointu i modelu) |
 | `SPLITTER_LLM_ENDPOINT` | (puste) | Endpoint zgodny z OpenAI, np. `http://host:1234/v1` |
@@ -222,6 +227,7 @@ opcji) są ignorowane — nie wywracają startu. Szablon: [`splitter/.env.exampl
 | `SPLITTER_OCR_LANGUAGES` | `pol+eng` | Języki Tesseracta (muszą być w obrazie) |
 | `SPLITTER_OCR_DPI` | `300` | Rozdzielczość renderu strony do OCR |
 | `SPLITTER_OCR_TIMEOUT_SECONDS` | `30` | Limit czasu OCR jednej strony |
+| `SPLITTER_OCR_WORKERS` | `2` | Liczba równoległych wątków OCR (procesów Tesseracta); render stron pozostaje sekwencyjny. Więcej = szybsze duże paczki kosztem CPU/RAM |
 
 **Diagnostyka klasyfikacji w logach** — przy `SPLITTER_LOG_PAGE_TEXT=true` każde
 żądanie `/api/split` loguje po ekstrakcji tekstu wpis per strona, np.:
@@ -230,6 +236,10 @@ opcji) są ignorowane — nie wywracają startu. Szablon: [`splitter/.env.exampl
 Strona 2: 830 znakow alnum | surowy(1200): "Faktura VAT nr 12/2026 ..." | znorm(300): "FAKTURA VAT NR 12/2026 ..."
 Strona 5: 0 znakow (pusta)
 ```
+
+Każda linia logu żądania `/api/split` ma prefiks `[job=<jobId>]` — przy
+równoczesnych żądaniach logi różnych paczek da się rozdzielić i skorelować
+z `jobId` zapisanym w logu operacji akcji WEBCON.
 
 Fragment `znorm` porównuje się 1:1 z nagłówkami i frazami ze słownika (nagłówek
 musi wystąpić w pierwszych ~1200 znormalizowanych znakach). Dodatkowo OCR loguje
