@@ -240,6 +240,12 @@ Każda linia logu żądania `/api/split` ma prefiks `[job=<jobId>]` — przy
 równoczesnych żądaniach logi różnych paczek da się rozdzielić i skorelować
 z `jobId` zapisanym w logu operacji akcji WEBCON.
 
+Po każdym podziale log dostaje linię podsumowania, np. `Metryki zadania: 12
+stron (OCR: 5), wywolania LLM: 2, dokumenty: 4 (weryfikacja: 1), czas 8.3 s`,
+a te same wielkości skumulowane od startu procesu zwraca `GET /metrics` —
+`review_rate` (odsetek dokumentów do weryfikacji) to główny wskaźnik, czy
+zmiany słownika i progów faktycznie poprawiają automatykę.
+
 Fragment `znorm` porównuje się 1:1 z nagłówkami i frazami ze słownika (nagłówek
 musi wystąpić w pierwszych ~1200 znormalizowanych znakach). Dodatkowo OCR loguje
 `OCR: uzupelniono tekst N stron (strony: [...])` oraz `OCR nie poprawil stron [...]
@@ -259,6 +265,7 @@ Dockerfile.
 | Endpoint | Opis |
 |---|---|
 | `GET /health` | Kontrola życia serwisu → `{"status":"ok"}` |
+| `GET /metrics` | Liczniki skumulowane od startu procesu (JSON, w pamięci): żądania, strony (w tym uzupełnione OCR), wywołania LLM, dokumenty, odsetek weryfikacji (`review_rate`), łączny czas przetwarzania. Token jak `/api/split` |
 | `POST /api/split` | multipart: `file` (PDF) + `patterns` (JSON, opcjonalne) → `SplitResult` |
 | `POST /api/pages/remove` | multipart: `file` (PDF) + `pages` (zakres) → `PageOpResult` bez tych stron |
 | `POST /api/pages/extract` | multipart: `file` (PDF) + `pages` (zakres) → `PageOpResult` tylko z tymi stronami |
@@ -576,6 +583,7 @@ uruchamia się ręcznie przeciw lokalnemu modelowi (poza pytest) do strojenia pr
 |---|---|
 | `api.py` | Warstwa HTTP (FastAPI): endpointy `/health`, `/api/split`, `/api/pages/remove`, `/api/pages/extract`, `/api/merge`; autoryzacja Bearer, parsowanie pola `patterns`, składanie zależności (silnik OCR, klasyfikatory, pipeline) z ustawień, dekodowanie nazw plików RFC 2047 z klienta .NET, konfiguracja logowania |
 | `config.py` | `SplitterSettings` — wszystkie zmienne `SPLITTER_*` (pydantic-settings, czyta `.env`, nieznane wpisy ignoruje) |
+| `metrics.py` | Metryki: kolektor per żądanie (contextvar; OCR/LLM raportują przez `add_*`, poza żądaniem no-op) + rejestr skumulowany od startu procesu dla `GET /metrics` |
 | `contracts.py` | Modele Pydantic API: `PatternPayload` (wejście), `DetectedDocument`, `SplitResult`, `PageOpResult` (wyjście) |
 | `patterns.py` | `DocumentPattern` (typ, nagłówek, frazy, frazy wykluczające, waga, aktywność) + `InMemoryPatternRepository` zwracające tylko aktywne wzorce |
 | `ocr.py` | Zdobycie tekstu stron: `PdfTextOcrEngine` (warstwa tekstowa), `TesseractPageOcr` (render pypdfium2 + pytesseract), kompozyt `TextLayerWithOcrFallback` (progi, „OCR nie niszczy danych", degradacja bez wywracania żądania), wspólny licznik `alnum_count` |
@@ -597,6 +605,8 @@ uruchamia się ręcznie przeciw lokalnemu modelowi (poza pytest) do strojenia pr
 | `test_config_logging.py` | Domyślne ustawienia (log level, OCR, logowanie tekstu stron), czytanie env, `configure_logging`, wybór silnika OCR wg `SPLITTER_OCR_ENABLED` |
 | `test_page_text_logging.py` | Diagnostyczny log tekstu stron: fragment surowy + znormalizowany, limity długości, strona pusta, wyłączenie flagą |
 | `test_contracts.py` | Serializacja modeli odpowiedzi |
+| `test_metrics.py` | Rejestr metryk (`review_rate`), kolektor per żądanie, zliczanie stron OCR i wywołań LLM, endpoint `/metrics` (wartości po podziale, token) |
+| `test_job_logging.py` | Prefiks `[job=<jobId>]` w logach żądania `/api/split` |
 | `test_normalization.py` | Normalizacja ASCII (diakrytyki, `ł`→`l`, wielkość liter, kompresja spacji) po obu stronach porównania |
 | `test_rule_classifier.py` | Punktacja reguł: nagłówek, frazy, frazy wykluczające, progi pierwszej strony i braku dopasowania |
 | `test_repository_mapping.py` | Filtrowanie aktywnych wzorców w repozytorium |

@@ -2,6 +2,7 @@ import base64
 import io
 import logging
 import re
+import time
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
@@ -20,6 +21,7 @@ from webcon_pdf_splitter.classification.llm import (
 from webcon_pdf_splitter.classification.pipeline import ClassificationPipeline
 from webcon_pdf_splitter.classification.prompts import PromptProvider
 from webcon_pdf_splitter.classification.rules import RuleBasedClassifier, normalize_text
+from webcon_pdf_splitter import metrics
 from webcon_pdf_splitter.config import SplitterSettings
 from webcon_pdf_splitter.contracts import PageOpResult, PatternPayload, SplitResult
 from webcon_pdf_splitter.ocr import (
@@ -214,6 +216,14 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/metrics")
+def metrics_endpoint(authorization: str | None = Header(default=None)) -> dict:
+    # liczniki skumulowane od startu procesu (w pamieci): odsetek weryfikacji
+    # to glowny wskaznik strojenia slownika i progow
+    _require_token(get_settings(), authorization)
+    return metrics.registry.snapshot()
+
+
 @app.post("/api/split", response_model=SplitResult)
 async def split_pdf_endpoint(
     file: UploadFile = File(...),
@@ -229,7 +239,8 @@ async def split_pdf_endpoint(
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
 
     job_id = str(uuid4())
-    with job_log_context(job_id):
+    started = time.perf_counter()
+    with job_log_context(job_id), metrics.request_collector() as request_metrics:
         logger.info(
             "Przyjeto '%s' do podzialu (jobId=%s, webconElementId=%s)",
             filename,
@@ -237,6 +248,23 @@ async def split_pdf_endpoint(
             webcon_element_id,
         )
         result = await _split(settings, file, patterns, filename)
+        request_metrics.pages = result.pageCount
+        request_metrics.documents = len(result.documents)
+        request_metrics.documents_requiring_review = sum(
+            1 for document in result.documents if document.requiresReview
+        )
+        request_metrics.duration_seconds = time.perf_counter() - started
+        metrics.registry.record(request_metrics)
+        logger.info(
+            "Metryki zadania: %s stron (OCR: %s), wywolania LLM: %s, "
+            "dokumenty: %s (weryfikacja: %s), czas %.1f s",
+            request_metrics.pages,
+            request_metrics.ocr_pages,
+            request_metrics.llm_calls,
+            request_metrics.documents,
+            request_metrics.documents_requiring_review,
+            request_metrics.duration_seconds,
+        )
     # identyfikator korelacyjny: akcja WEBCON zapisuje go w logu operacji
     result.jobId = job_id
     return result

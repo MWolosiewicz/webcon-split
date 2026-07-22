@@ -5,6 +5,7 @@ from typing import Protocol
 from pydantic import BaseModel, Field
 import requests
 
+from webcon_pdf_splitter import metrics
 from webcon_pdf_splitter.classification.prompts import PromptProvider, build_context
 
 logger = logging.getLogger(__name__)
@@ -103,6 +104,7 @@ class OpenAiCompatibleLlmClassifier:
         known_document_types: list[str],
         current_document_type: str = "",
     ) -> LlmClassification | None:
+        metrics.add_llm_call()
         context = build_context(
             current_text=current_text,
             previous_text=previous_text,

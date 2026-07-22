@@ -1,6 +1,8 @@
 import logging
 from typing import Protocol
 
+from webcon_pdf_splitter import metrics
+
 logger = logging.getLogger(__name__)
 
 
@@ -81,6 +83,7 @@ class TextLayerWithOcrFallback:
             else:
                 not_improved.append(index + 1)
         if filled:
+            metrics.add_ocr_pages(len(filled))
             logger.info("OCR: uzupelniono tekst %s stron (strony: %s)", len(filled), filled)
         if not_improved:
             logger.info(
