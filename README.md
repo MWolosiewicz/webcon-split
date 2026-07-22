@@ -126,16 +126,15 @@ lub opcją „searchable PDF" na skanerach).
 tekście **znormalizowanym do ASCII** (fold `ł`→`l`, usunięcie diakrytyków, wielkie
 litery, kompresja spacji) — po obu stronach porównania, więc znosi różnice zapisu:
 
-- **nagłówek** wzorca znaleziony w pierwszych ~1200 znakach → `+0.80 + 0.10 × waga`
-  (waga jest dodatkiem, nie mnożnikiem: waga 1,0 → 0.90, waga 2,0 → pełne 1.00);
-- każde trafienie **frazy** → `+min(0.18, liczba_trafień × 0.06)`;
+- **nagłówek** wzorca znaleziony w pierwszych ~1200 znakach → `+0.80 × waga`;
+- trafione **frazy** → `+0.10 × liczba_trafień × waga`;
 - trafiona **fraza wykluczająca** → wzorzec całkowicie pomijany;
 - pewność ograniczona do 1.00; **strona pierwsza dokumentu** przy pewności ≥ 0.70;
 - gdy najlepszy wynik < 0.50 → „Nieznany typ dokumentu" (pewność 0.20).
 
-Efekt progów: sam trafiony nagłówek przy domyślnej wadze 1,0 daje 0.90 i
-przekracza próg auto-akceptacji (0.80) — frazy nie są konieczne do
-automatycznego zatwierdzenia, podnoszą tylko pewność.
+Efekt progów przy domyślnej wadze 1,0: sam trafiony nagłówek daje równo 0.80
+i przechodzi próg auto-akceptacji (0.80); nagłówek + 2 trafione frazy dają
+pełne 1.00.
 
 Frazy trafione, ale bez nagłówka, tworzą „powinowactwo" typu (używane niżej).
 

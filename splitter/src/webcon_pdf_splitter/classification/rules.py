@@ -58,12 +58,13 @@ class RuleBasedClassifier:
             score = 0.0
             signals: list[str] = []
             if header_match:
-                # baza 0.80 + waga jako dodatek (0.10 x waga): domyslna waga 1.0
-                # daje 0.90 (auto-akceptacja), waga 2.0 daje pelne 1.0
-                score += 0.80 + 0.10 * pattern.weight
+                # naglowek 0.80 x waga + frazy 0.10 x trafienia x waga:
+                # przy wadze 1.0 sam naglowek daje 0.80 (prog auto-akceptacji),
+                # naglowek + 2 frazy pelne 1.0
+                score += 0.80 * pattern.weight
                 signals.append(f"header_match:{pattern.header}")
             if phrase_hits:
-                score += min(0.18, phrase_hits * 0.06)
+                score += 0.10 * phrase_hits * pattern.weight
                 signals.append(f"phrase_hits:{phrase_hits}")
 
             confidence = max(0.0, min(score, 1.0))
