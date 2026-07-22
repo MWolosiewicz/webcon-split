@@ -1,3 +1,5 @@
+import pytest
+
 from webcon_pdf_splitter.classification.rules import RuleBasedClassifier
 from webcon_pdf_splitter.patterns import DocumentPattern
 
@@ -25,6 +27,69 @@ def test_classifier_detects_known_header_as_first_page():
     assert result.document_type == "Umowa o prace"
     assert result.confidence >= 0.90
     assert "header_match:UMOWA O PRACE" in result.signals
+
+
+def test_header_alone_with_default_weight_reaches_auto_accept():
+    # naglowek = baza 0.80 + 0.10 x waga; przy domyslnej wadze 1.0 sam
+    # naglowek daje 0.90 i przechodzi prog auto-akceptacji (0.80)
+    classifier = RuleBasedClassifier(
+        patterns=[
+            DocumentPattern(
+                document_type="Swiadectwo pracy",
+                header="SWIADECTWO PRACY",
+                phrases=["okres zatrudnienia"],
+                excluded_phrases=[],
+                weight=1.0,
+                active=True,
+            )
+        ]
+    )
+
+    result = classifier.classify_page("SWIADECTWO PRACY wydane dnia", page_number=1)
+
+    assert result.is_first_page is True
+    assert result.confidence == pytest.approx(0.90)
+
+
+def test_header_with_weight_two_reaches_full_confidence():
+    classifier = RuleBasedClassifier(
+        patterns=[
+            DocumentPattern(
+                document_type="Umowa o prace",
+                header="UMOWA O PRACE",
+                phrases=[],
+                excluded_phrases=[],
+                weight=2.0,
+                active=True,
+            )
+        ]
+    )
+
+    result = classifier.classify_page("UMOWA O PRACE zawarta dnia", page_number=1)
+
+    assert result.confidence == pytest.approx(1.0)
+
+
+def test_confidence_is_capped_at_one():
+    # naglowek z duza waga + bonus za frazy nie moze przekroczyc 1.0
+    classifier = RuleBasedClassifier(
+        patterns=[
+            DocumentPattern(
+                document_type="Umowa o prace",
+                header="UMOWA O PRACE",
+                phrases=["pracodawca", "pracownik", "wynagrodzenie"],
+                excluded_phrases=[],
+                weight=2.0,
+                active=True,
+            )
+        ]
+    )
+
+    result = classifier.classify_page(
+        "UMOWA O PRACE: pracodawca, pracownik, wynagrodzenie", page_number=1
+    )
+
+    assert result.confidence == pytest.approx(1.0)
 
 
 def test_classifier_marks_unknown_page_as_continuation_with_low_confidence():
