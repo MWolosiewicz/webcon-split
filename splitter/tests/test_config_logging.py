@@ -23,6 +23,23 @@ def test_ocr_settings_defaults():
     assert settings.ocr_languages == "pol+eng"
     assert settings.ocr_dpi == 300
     assert settings.ocr_timeout_seconds == 30
+    assert settings.ocr_workers == 2
+
+
+def test_ocr_workers_read_from_env(monkeypatch):
+    monkeypatch.setenv("SPLITTER_OCR_WORKERS", "4")
+    assert SplitterSettings(_env_file=None).ocr_workers == 4
+
+
+def test_auto_accept_confidence_defaults_to_080():
+    # obnizony prog: sam dobry naglowek (0.90 przy wadze 1.0) ma przechodzic
+    assert SplitterSettings(_env_file=None).min_auto_accept_confidence == 0.80
+
+
+def test_build_ocr_engine_passes_workers_to_tesseract():
+    settings = SplitterSettings(_env_file=None, ocr_workers=3)
+    engine = api.build_ocr_engine(settings)
+    assert engine._page_ocr._workers == 3
 
 
 def test_ocr_settings_read_from_env(monkeypatch):

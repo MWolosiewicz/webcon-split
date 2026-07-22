@@ -8,7 +8,7 @@ class SplitterSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="SPLITTER_", env_file=".env", extra="ignore")
 
     work_dir: str = Field(default="./work")
-    min_auto_accept_confidence: float = Field(default=0.90)
+    min_auto_accept_confidence: float = Field(default=0.80)
     min_review_confidence: float = Field(default=0.70)
     llm_enabled: bool = Field(default=False)
     llm_endpoint: str = Field(default="")
@@ -26,3 +26,4 @@ class SplitterSettings(BaseSettings):
     ocr_languages: str = Field(default="pol+eng")
     ocr_dpi: int = Field(default=300)
     ocr_timeout_seconds: int = Field(default=30)
+    ocr_workers: int = Field(default=2)
