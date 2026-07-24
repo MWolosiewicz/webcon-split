@@ -108,9 +108,11 @@ Za protokołem `OcrEngine` stoi kompozyt `TextLayerWithOcrFallback`:
 
 - **Uruchom OCR** — `SPLITTER_OCR_MIN_TEXT_CHARS` (25, konfigurowalny). Wysoki,
   aby strona z samą stopką skanera trafiła do OCR.
-- **Omiń LLM (pusta strona)** — strona jest „pusta", gdy ma **zero** znaków
-  alfanumerycznych, również po OCR (stała, nie env). Krótka, ale realna strona
-  nie jest uznawana za pustą i idzie normalnie do LLM.
+- **Omiń LLM / usuń (pusta strona)** — strona jest „pusta", gdy ma **≤
+  `SPLITTER_EMPTY_PAGE_MAX_ALNUM`** znaków alfanumerycznych, również po OCR
+  (domyślnie 0). Krótka, ale realna strona nie jest uznawana za pustą i idzie
+  normalnie do LLM. Puste strony przy `SPLITTER_DROP_EMPTY_PAGES=true`
+  (domyślnie) są usuwane z wyników — patrz „Grupowanie stron".
 
 OCR nigdy nie wywraca żądania: brak binarki / timeout (`SPLITTER_OCR_TIMEOUT_SECONDS`,
 30 s) / błąd renderu → strona traktowana jak pusta, pozostałe strony przetwarzane
@@ -151,9 +153,16 @@ Dla kolejnych stron (każda należy do dokładnie jednego dokumentu):
 1. **Nagłówek pasuje** (strona pierwsza) → nowy dokument.
 2. **≥1 fraza typu bieżącego dokumentu** (powinowactwo) → kontynuacja bieżącego
    dokumentu (bez LLM).
-3. **Strona pusta** (0 znaków, też po OCR) → **omija LLM**, doklejana do bieżącego
-   dokumentu z wymuszonym `requiresReview` i powodem
-   „strona N bez tekstu (rowniez po OCR) - dolaczona automatycznie".
+3. **Strona pusta** (≤ `SPLITTER_EMPTY_PAGE_MAX_ALNUM` znaków, też po OCR) →
+   **omija LLM**; przy `SPLITTER_DROP_EMPTY_PAGES=true` (domyślnie) jest
+   **usuwana** z wyników (nie trafia do żadnego pliku, nie wymusza weryfikacji);
+   puste strony ze środka dokumentu lądują w `removedPages` i w komentarzu
+   dziecka, a podsumowanie usunięć w `warnings` + logu operacji. Przy `false` —
+   doklejana do bieżącego dokumentu z wymuszonym `requiresReview` i powodem
+   „strona N bez tekstu (rowniez po OCR) - dolaczona automatycznie". **Gdy
+   usunięcie zostawiłoby 0 dokumentów (np. awaria OCR), cała paczka trafia jako
+   jeden „Nieznany typ dokumentu" do weryfikacji** — funkcja nigdy nie gubi
+   paczki po cichu.
 4. **W innym wypadku (ma tekst, brak dopasowania)** → fallback LLM (jeśli włączony).
 5. **Fallback bez werdyktu / LLM wyłączony** → strona doklejana do bieżącego
    dokumentu z wymuszonym `requiresReview` i sygnałem `glued_unknown_page:N`.
@@ -233,6 +242,8 @@ opcji) są ignorowane — nie wywracają startu. Szablon: [`splitter/.env.exampl
 | `SPLITTER_OCR_DPI` | `300` | Rozdzielczość renderu strony do OCR |
 | `SPLITTER_OCR_TIMEOUT_SECONDS` | `30` | Limit czasu OCR jednej strony |
 | `SPLITTER_OCR_WORKERS` | `2` | Liczba równoległych wątków OCR (procesów Tesseracta); render stron pozostaje sekwencyjny. Więcej = szybsze duże paczki kosztem CPU/RAM |
+| `SPLITTER_DROP_EMPTY_PAGES` | `true` | Puste strony są usuwane z wyników zamiast doklejania z `requiresReview`. `false` = stare zachowanie (doklejanie + flaga). Gdy usunięcie zostawiłoby 0 dokumentów (np. awaria OCR), cała paczka trafia jako jeden „Nieznany typ dokumentu" do weryfikacji |
+| `SPLITTER_EMPTY_PAGE_MAX_ALNUM` | `0` | Do ilu znaków alfanum. po OCR strona jest uznawana za pustą (0 = tylko całkiem bez tekstu; >0 łapie szum OCR na blankach). Trzymać małe — wysokie ryzykuje utratę stron ze skąpą treścią |
 
 **Diagnostyka klasyfikacji w logach** — przy `SPLITTER_LOG_PAGE_TEXT=true` każde
 żądanie `/api/split` loguje po ekstrakcji tekstu wpis per strona, np.:
