@@ -98,6 +98,26 @@ Konsekwencje dla segmentow:
   "niczyja" - nie miesci sie w zadnym finalnym zakresie i tak nie zostalaby
   zapisana; raportujemy ja tylko na poziomie paczki.
 
+## Zabezpieczenie: cala paczka pusta (anty-regresja OCR)
+
+Gdy usuwanie zostawiloby ZERO dokumentow (kazda strona uznana za pusta - w
+praktyce najczesciej awaria OCR: brak binarki tesseract, timeouty), pipeline
+NIE usuwa nic. Zamiast tego wystawia jeden dokument "Nieznany typ dokumentu"
+na cala paczke (`requiresReview: true`) oraz warning "wszystkie strony
+rozpoznane jako puste - sprawdz OCR".
+
+Uzasadnienie: bez tego funkcja zamienialaby awarie OCR na skanie w cicha
+utrate calej paczki (0 dokumentow, brak elementu do weryfikacji). Dzisiejsze
+zachowanie w tej sytuacji to jeden dokument nieznany do weryfikacji - operator
+ja zauwaza. Zabezpieczenie zachowuje ten sygnal.
+
+Realizacja: po glownej petli grupowania, jesli lista segmentow jest pusta,
+a lista `removed_pages` niepusta -> zbuduj pojedynczy segment "Nieznany typ
+dokumentu" obejmujacy strony 1..N (wszystkie), wyczysc `removed_pages`
+(nic nie usuwamy), dodaj warning. Reuzywa istniejacej maszynerii serii
+nieznanej. Efekt uboczny (pozadany): paczka samych blankow nadal daje wynik
+z trescia, wiec istniejace testy API na blankach pozostaja zielone.
+
 ## Wplyw na niezmiennik zakresow
 
 Spec `2026-07-11-unknown-pages-design.md` deklaruje: "kazda strona paczki
@@ -238,6 +258,9 @@ Pipeline (jednostkowe, na tekstach stron, LLM jako stub):
 - strona ze skapa, ale realna trescia powyzej progu -> NIE usunieta;
 - pusta strona nie generuje wywolania LLM (licznik stuba = 0 na tej stronie);
 - `warnings` zawiera podsumowanie z pelna lista usunietych stron;
+- ZABEZPIECZENIE: paczka samych pustych stron -> jeden dokument "Nieznany typ
+  dokumentu" na cala paczke, `requiresReview: true`, warning "wszystkie strony
+  rozpoznane jako puste - sprawdz OCR", `removedPages` puste (nic nie usunieto);
 - suma: zakresy pokrywaja wszystkie strony ORYGINALU z wyjatkiem tych na
   liscie usunietych (jedyne dozwolone dziury).
 
