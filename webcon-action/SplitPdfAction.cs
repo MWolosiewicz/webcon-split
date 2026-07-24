@@ -90,11 +90,15 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
                 createdIds.Add(started.CreatedDocumentID);
             }
 
+            var warningsText = result.Warnings.Count > 0
+                ? " Warnings: " + string.Join(" | ", result.Warnings) + "."
+                : "";
             args.LogMessage =
                 $"SplitPdfAction v{pluginVersion}. " +
                 patternsWarning +
                 $"Splitter job {result.JobId}: {result.Status}, pages: {result.PageCount}, " +
-                $"documents: {result.Documents.Count}, created elements: {string.Join(", ", createdIds)}";
+                $"documents: {result.Documents.Count}, created elements: {string.Join(", ", createdIds)}" +
+                warningsText;
         }
         catch (Exception ex)
         {
@@ -136,6 +140,8 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
         var comment =
             $"Type: {detected.DocumentType}; pages {detected.StartPage}-{detected.EndPage}; " +
             $"confidence {detected.Confidence:0.00}; requires review: {detected.RequiresReview}";
+        if (detected.RemovedPages.Count > 0)
+            comment += $"; usunieto puste strony: {string.Join(", ", detected.RemovedPages)}";
         // powody trafiaja do komentarza tylko, gdy nie sa zapisywane w dedykowanym polu
         if (Configuration.ReviewReasonsFieldId <= 0 && detected.ReviewReasons.Count > 0)
             comment += $"; review reasons: {string.Join("; ", detected.ReviewReasons)}";

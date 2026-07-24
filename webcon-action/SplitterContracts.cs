@@ -24,6 +24,7 @@ public sealed class DetectedDocument
     public string OutputFileName { get; set; } = "";
     public string? FileContentBase64 { get; set; }
     public List<string> Signals { get; set; } = new();
+    public List<int> RemovedPages { get; set; } = new();
     public Dictionary<string, object> Metadata { get; set; } = new();
 }
 
