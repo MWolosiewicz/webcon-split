@@ -95,7 +95,7 @@ def test_leading_empty_pages_form_unknown_document():
     )
 
 
-def _make_pipeline(llm_classifier=None):
+def _make_pipeline(llm_classifier=None, drop_empty_pages=True, empty_page_max_alnum=0):
     classifier = RuleBasedClassifier(
         patterns=[
             DocumentPattern(
@@ -111,6 +111,8 @@ def _make_pipeline(llm_classifier=None):
         llm_classifier=llm_classifier or DisabledLlmClassifier(),
         min_auto_accept_confidence=0.90,
         min_review_confidence=0.70,
+        drop_empty_pages=drop_empty_pages,
+        empty_page_max_alnum=empty_page_max_alnum,
     )
 
 

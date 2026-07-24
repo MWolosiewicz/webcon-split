@@ -38,11 +38,15 @@ class ClassificationPipeline:
         llm_classifier: LlmClassifier,
         min_auto_accept_confidence: float,
         min_review_confidence: float,
+        drop_empty_pages: bool = True,
+        empty_page_max_alnum: int = 0,
     ) -> None:
         self._rule_classifier = rule_classifier
         self._llm_classifier = llm_classifier
         self._min_auto_accept_confidence = min_auto_accept_confidence
         self._min_review_confidence = min_review_confidence
+        self._drop_empty_pages = drop_empty_pages
+        self._empty_page_max_alnum = empty_page_max_alnum
 
     def split_pages(self, source_file_name: str, page_texts: list[str]) -> SplitResult:
         known_types = self._rule_classifier.known_document_types
@@ -81,7 +85,7 @@ class ClassificationPipeline:
                 )
                 continue
 
-            page_is_empty = alnum_count(text) == 0
+            page_is_empty = alnum_count(text) <= self._empty_page_max_alnum
             llm = (
                 None
                 if page_is_empty

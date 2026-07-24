@@ -286,6 +286,8 @@ async def _split(
         llm_classifier=build_llm_classifier(settings),
         min_auto_accept_confidence=settings.min_auto_accept_confidence,
         min_review_confidence=settings.min_review_confidence,
+        drop_empty_pages=settings.drop_empty_pages,
+        empty_page_max_alnum=settings.empty_page_max_alnum,
     )
     ocr = build_ocr_engine(settings)
 
