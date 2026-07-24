@@ -52,6 +52,8 @@ class ClassificationPipeline:
         known_types = self._rule_classifier.known_document_types
         segments: list[_Segment] = []
         current: _Segment | None = None
+        removed_pages: list[int] = []
+        all_empty_fallback = False
 
         for index, text in enumerate(page_texts):
             page_number = index + 1
@@ -86,6 +88,14 @@ class ClassificationPipeline:
                 continue
 
             page_is_empty = alnum_count(text) <= self._empty_page_max_alnum
+            if page_is_empty and self._drop_empty_pages:
+                removed_pages.append(page_number)
+                logger.info(
+                    "Strona %s: pusta (%s znakow alnum) - usunieta",
+                    page_number,
+                    alnum_count(text),
+                )
+                continue
             llm = (
                 None
                 if page_is_empty
@@ -167,12 +177,35 @@ class ClassificationPipeline:
                     self._unmatched_details(unmatched),
                 )
 
+        if not segments and removed_pages:
+            # ZABEZPIECZENIE: cala paczka pusta (np. awaria OCR) - nie gub jej po cichu
+            logger.warning(
+                "Wszystkie %s stron rozpoznane jako puste - mozliwa awaria OCR; "
+                "paczka trafia do weryfikacji jako nieznana",
+                len(page_texts),
+            )
+            segments.append(
+                _Segment(
+                    document_type=UNKNOWN_DOCUMENT_TYPE,
+                    confidence=0.20,
+                    signals=["all_empty_fallback"],
+                    start_page=1,
+                    end_page=len(page_texts),
+                    known=False,
+                )
+            )
+            removed_pages = []
+            all_empty_fallback = True
+
         documents: list[DetectedDocument] = []
         for document_index, segment in enumerate(segments, start=1):
             requires_review = (
                 segment.forced_review
                 or segment.confidence < self._min_auto_accept_confidence
             )
+            segment_removed = [
+                p for p in removed_pages if segment.start_page <= p <= segment.end_page
+            ]
             documents.append(
                 DetectedDocument(
                     documentIndex=document_index,
@@ -186,6 +219,7 @@ class ClassificationPipeline:
                         segment.document_type, segment.start_page, segment.end_page
                     ),
                     signals=segment.signals,
+                    removedPages=segment_removed,
                     metadata={},
                 )
             )
@@ -201,6 +235,17 @@ class ClassificationPipeline:
                         f"Strona {page.page_number}: brak dopasowania - doklejona do dokumentu "
                         f"'{segment.document_type}', wymagana weryfikacja"
                     )
+        if removed_pages:
+            warnings.append(
+                "Usunieto %s pustych stron: %s (z %s)"
+                % (
+                    len(removed_pages),
+                    ", ".join(str(page) for page in removed_pages),
+                    len(page_texts),
+                )
+            )
+        if all_empty_fallback:
+            warnings.append("Wszystkie strony rozpoznane jako puste - sprawdz OCR")
 
         status = "requires_review" if any(document.requiresReview for document in documents) else "completed"
         for document in documents:

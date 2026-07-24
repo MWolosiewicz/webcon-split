@@ -46,7 +46,7 @@ def test_output_file_name_has_no_numeric_prefix():
     assert result.documents[0].outputFileName == "Umowa_o_prace_strony_001-001.pdf"
 
 
-def test_empty_page_skips_llm_and_glues_with_review():
+def test_empty_page_dropped_by_default():
     stub = _StubLlm(
         responses={
             "": LlmClassification(
@@ -60,39 +60,29 @@ def test_empty_page_skips_llm_and_glues_with_review():
         ["UMOWA O PRACE zawarta z pracodawca", "    \n  "],
     )
 
-    # pusta strona 2 nie trafia do LLM mimo skonfigurowanej odpowiedzi
+    # pusta strona 2 nie trafia do LLM i jest usuwana (nie doklejana)
     assert stub.calls == []
     assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
-        ("Umowa o prace", 1, 2),
+        ("Umowa o prace", 1, 1),
     ]
     doc = result.documents[0]
-    assert doc.requiresReview is True
-    assert "glued_unknown_page:2" in doc.signals
-    assert doc.reviewReasons == [
-        "strona 2 bez tekstu (rowniez po OCR) - dolaczona automatycznie"
-    ]
+    assert doc.requiresReview is False
+    assert doc.removedPages == []
+    assert "glued_unknown_page:2" not in doc.signals
+    assert result.warnings == ["Usunieto 1 pustych stron: 2 (z 2)"]
 
 
-def test_leading_empty_pages_form_unknown_document():
+def test_leading_empty_pages_dropped():
     result = _make_pipeline().split_pages(
         "scan.pdf",
         ["", "   ", "UMOWA O PRACE zawarta z pracodawca"],
     )
 
     assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
-        ("Nieznany typ dokumentu", 1, 2),
         ("Umowa o prace", 3, 3),
     ]
-    unknown = result.documents[0]
-    assert unknown.requiresReview is True
-    assert (
-        "strona 1 bez tekstu (rowniez po OCR) - dolaczona automatycznie"
-        in unknown.reviewReasons
-    )
-    assert (
-        "strona 2 bez tekstu (rowniez po OCR) - dolaczona automatycznie"
-        in unknown.reviewReasons
-    )
+    assert result.documents[0].removedPages == []
+    assert result.warnings == ["Usunieto 2 pustych stron: 1, 2 (z 3)"]
 
 
 def _make_pipeline(llm_classifier=None, drop_empty_pages=True, empty_page_max_alnum=0):
@@ -630,3 +620,88 @@ def test_review_reasons_include_inconsistency_note():
         "znanych typow); LLM proponuje typ: 'Zaswiadczenie o zatrudnieniu' "
         "(pewnosc 0.95))"
     ]
+
+
+def test_empty_page_inside_document_attributed_to_child():
+    result = _make_pipeline().split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "    ", "wynagrodzenie zasadnicze wynosi"],
+    )
+
+    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
+        ("Umowa o prace", 1, 3),
+    ]
+    assert result.documents[0].removedPages == [2]
+    assert result.warnings == ["Usunieto 1 pustych stron: 2 (z 3)"]
+
+
+def test_separator_empty_page_reported_only_at_bundle_level():
+    result = _make_pipeline().split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "   ", "SWIADECTWO PRACY okres zatrudnienia"],
+    )
+
+    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
+        ("Umowa o prace", 1, 1),
+        ("Swiadectwo pracy", 3, 3),
+    ]
+    assert result.documents[0].removedPages == []
+    assert result.documents[1].removedPages == []
+    assert result.warnings == ["Usunieto 1 pustych stron: 2 (z 3)"]
+
+
+def test_empty_page_glued_with_review_when_drop_disabled():
+    result = _make_pipeline(drop_empty_pages=False).split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "    \n  "],
+    )
+
+    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
+        ("Umowa o prace", 1, 2),
+    ]
+    doc = result.documents[0]
+    assert doc.requiresReview is True
+    assert "glued_unknown_page:2" in doc.signals
+    assert doc.reviewReasons == [
+        "strona 2 bez tekstu (rowniez po OCR) - dolaczona automatycznie"
+    ]
+    assert doc.removedPages == []
+
+
+def test_threshold_treats_ocr_noise_as_empty():
+    result = _make_pipeline(empty_page_max_alnum=3).split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "x y"],
+    )
+
+    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
+        ("Umowa o prace", 1, 1),
+    ]
+    assert result.warnings == ["Usunieto 1 pustych stron: 2 (z 2)"]
+
+
+def test_sparse_real_content_above_threshold_not_dropped():
+    result = _make_pipeline(empty_page_max_alnum=3).split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "Zalacznik nr 1"],
+    )
+
+    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
+        ("Umowa o prace", 1, 2),
+    ]
+    assert result.documents[0].removedPages == []
+    assert result.documents[0].requiresReview is True
+
+
+def test_all_empty_bundle_falls_back_to_unknown_document():
+    result = _make_pipeline().split_pages("scan.pdf", ["", "   ", "  \n "])
+
+    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
+        ("Nieznany typ dokumentu", 1, 3),
+    ]
+    doc = result.documents[0]
+    assert doc.requiresReview is True
+    assert doc.removedPages == []
+    assert "all_empty_fallback" in doc.signals
+    assert "Wszystkie strony rozpoznane jako puste - sprawdz OCR" in result.warnings
+    assert result.status == "requires_review"
