@@ -60,3 +60,18 @@ def test_page_op_result_roundtrip():
     assert dumped["outputFileName"] == "out.pdf"
     assert dumped["pageCount"] == 3
     assert dumped["warnings"] == []
+
+
+def test_detected_document_removed_pages_defaults_empty():
+    from webcon_pdf_splitter.contracts import DetectedDocument
+
+    doc = DetectedDocument(
+        documentIndex=1,
+        documentType="X",
+        confidence=0.5,
+        requiresReview=False,
+        startPage=1,
+        endPage=1,
+        outputFileName="x.pdf",
+    )
+    assert doc.removedPages == []
