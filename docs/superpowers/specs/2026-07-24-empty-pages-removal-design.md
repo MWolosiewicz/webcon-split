@@ -1,5 +1,18 @@
 # Usuwanie pustych stron z paczki - Design
 
+> # NIEAKTUALNE - NIE IMPLEMENTOWAC
+>
+> **Ten spec zostal wycofany 2026-07-25 po incydencie produkcyjnym z utrata
+> stron.** Opisane tu kryterium "pusta strona = malo znakow po OCR" jest
+> BLEDNE dla skanow: strona, ktorej Tesseract nie odczytal (dowod osobisty,
+> dowod rejestracyjny, slaby skan), ma 0 znakow dokladnie tak samo jak biala
+> kartka - i zostawala skasowana.
+>
+> Obowiazuje: **`2026-07-25-blank-page-detection-design.md`** (decyzja na
+> podstawie pokrycia atramentem, tryby keep/report/remove, bezpiecznik).
+> Ponizsza tresc zachowana wylacznie jako zapis tego, co bylo probowane
+> i dlaczego nie dziala.
+
 > **Zmiana zachowania (wlaczona domyslnie):** od tej wersji puste strony NIE sa
 > juz doklejane do dokumentu z wymuszona weryfikacja, tylko usuwane z wynikow.
 > Steruje tym `SPLITTER_DROP_EMPTY_PAGES` (domyslnie `true`). Instalacja po
