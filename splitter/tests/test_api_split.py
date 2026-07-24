@@ -62,3 +62,22 @@ def test_split_accepts_valid_token(monkeypatch):
     )
 
     assert response.status_code == 200
+
+
+def test_split_all_empty_bundle_flags_for_review():
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/split",
+        files={"file": ("scan.pdf", io.BytesIO(_pdf_bytes(2)), "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["pageCount"] == 2
+    assert payload["status"] == "requires_review"
+    assert len(payload["documents"]) == 1
+    assert payload["documents"][0]["documentType"] == "Nieznany typ dokumentu"
+    # pole removedPages serializuje sie w odpowiedzi (tu puste - zabezpieczenie nic nie usuwa)
+    assert payload["documents"][0]["removedPages"] == []
+    assert any("sprawdz OCR" in warning for warning in payload["warnings"])
