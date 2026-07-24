@@ -88,3 +88,29 @@ def test_merge_pdfs_rejects_empty():
 
     with pytest.raises(ValueError):
         merge_pdfs([])
+
+
+def test_split_pdf_skips_removed_pages(tmp_path):
+    from webcon_pdf_splitter.pdf_io import split_pdf
+    from webcon_pdf_splitter.contracts import DetectedDocument
+
+    source = _pdf_path(tmp_path, "src.pdf", 5)
+    doc = DetectedDocument(
+        documentIndex=1, documentType="X", confidence=0.9, requiresReview=False,
+        startPage=1, endPage=5, outputFileName="out.pdf", removedPages=[2, 4],
+    )
+    out_paths = split_pdf(source, tmp_path / "out", [doc])
+    assert _page_count(out_paths[0].read_bytes()) == 3
+
+
+def test_split_pdf_without_removed_pages_keeps_all(tmp_path):
+    from webcon_pdf_splitter.pdf_io import split_pdf
+    from webcon_pdf_splitter.contracts import DetectedDocument
+
+    source = _pdf_path(tmp_path, "src.pdf", 3)
+    doc = DetectedDocument(
+        documentIndex=1, documentType="X", confidence=0.9, requiresReview=False,
+        startPage=1, endPage=3, outputFileName="out.pdf",
+    )
+    out_paths = split_pdf(source, tmp_path / "out", [doc])
+    assert _page_count(out_paths[0].read_bytes()) == 3

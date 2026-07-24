@@ -87,7 +87,10 @@ def split_pdf(source_path: Path, output_dir: Path, documents: list[DetectedDocum
     output_paths: list[Path] = []
     for document in documents:
         writer = PdfWriter()
+        removed = set(document.removedPages)
         for page_index in range(document.startPage - 1, document.endPage):
+            if (page_index + 1) in removed:
+                continue
             writer.add_page(reader.pages[page_index])
         output_path = output_dir / document.outputFileName
         with output_path.open("wb") as handle:
