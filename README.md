@@ -245,6 +245,39 @@ opcji) są ignorowane — nie wywracają startu. Szablon: [`splitter/.env.exampl
 | `SPLITTER_DROP_EMPTY_PAGES` | `true` | Puste strony są usuwane z wyników zamiast doklejania z `requiresReview`. `false` = stare zachowanie (doklejanie + flaga). Gdy usunięcie zostawiłoby 0 dokumentów (np. awaria OCR), cała paczka trafia jako jeden „Nieznany typ dokumentu" do weryfikacji |
 | `SPLITTER_EMPTY_PAGE_MAX_ALNUM` | `0` | Do ilu znaków alfanum. po OCR strona jest uznawana za pustą (0 = tylko całkiem bez tekstu; >0 łapie szum OCR na blankach). Trzymać małe — wysokie ryzykuje utratę stron ze skąpą treścią |
 
+**Strojenie równoległości OCR (`OMP_THREAD_LIMIT`)** — `SPLITTER_OCR_WORKERS` to
+liczba równoległych **procesów** Tesseracta (po jednym na stronę z bieżącej
+partii). Haczyk: pojedynczy proces Tesseracta zbudowany z OpenMP (jak w obrazie
+Debiana) domyślnie tworzy zespół wątków wielkości **liczby rdzeni** — więc przy
+`workers > 1` sumaryczna liczba wątków wynosi `workers × rdzenie` i przekracza
+liczbę rdzeni. Ta **nadsubskrypcja** wydłuża czas pojedynczej strony i wywołuje
+timeouty (`SPLITTER_OCR_TIMEOUT_SECONDS`) tam, gdzie sekwencyjnie ich nie było.
+Lekarstwo: ograniczyć wątki **na proces** zmienną OpenMP `OMP_THREAD_LIMIT`.
+
+`OMP_THREAD_LIMIT` **nie jest** zmienną `SPLITTER_*` — to surowa zmienna
+środowiskowa OpenMP (pydantic ją ignoruje, a błędna wartość nie wywróci
+serwisu). Ustawia się ją w tym samym pliku `.env` obok compose (Docker
+wstrzykuje cały `.env` do kontenera przez `env_file`), a proces `tesseract`
+dziedziczy ją przy starcie. Zasada: **`OMP_THREAD_LIMIT` = liczba rdzeni na
+jeden proces**, a `SPLITTER_OCR_WORKERS × OMP_THREAD_LIMIT ≈ liczba rdzeni
+(vCPU)`.
+
+Przykłady na maszynie 4-rdzeniowej:
+
+| `.env` | Efekt |
+|---|---|
+| `SPLITTER_OCR_WORKERS=4` + `OMP_THREAD_LIMIT=1` | 4 strony naraz, każda 1 rdzeń — **maks. przepustowość** |
+| `SPLITTER_OCR_WORKERS=2` + `OMP_THREAD_LIMIT=2` | 2 strony naraz, każda 2 rdzenie — **zbalansowane** (mniej timeoutów na ciężkich stronach) |
+| `SPLITTER_OCR_WORKERS=1` (bez `OMP_THREAD_LIMIT`) | 1 strona na wszystkich rdzeniach — najniższa przepustowość, ale najkrótszy czas pojedynczej strony |
+
+Do przerobienia całej paczki więcej **procesów** zwykle bije więcej **wątków na
+proces** — Tesseract słabo skaluje się wątkowo w obrębie jednej strony (~1,5× z
+4 wątków, nie 4×). Domyślne `workers=2` **bez** `OMP_THREAD_LIMIT` na maszynie z
+małą liczbą rdzeni łatwo prowadzi do nadsubskrypcji — ustaw `OMP_THREAD_LIMIT`
+świadomie. Uwaga: `OMP_THREAD_LIMIT=2` znaczy „2 rdzenie **na proces**", a nie
+„2 rdzenie łącznie"; żeby każdy z 2 procesów dostał 4 rdzenie, potrzeba
+`OMP_THREAD_LIMIT=4` (i co najmniej 8 vCPU).
+
 **Diagnostyka klasyfikacji w logach** — przy `SPLITTER_LOG_PAGE_TEXT=true` każde
 żądanie `/api/split` loguje po ekstrakcji tekstu wpis per strona, np.:
 
