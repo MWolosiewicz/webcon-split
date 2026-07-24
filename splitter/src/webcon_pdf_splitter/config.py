@@ -27,3 +27,5 @@ class SplitterSettings(BaseSettings):
     ocr_dpi: int = Field(default=300)
     ocr_timeout_seconds: int = Field(default=30)
     ocr_workers: int = Field(default=2)
+    drop_empty_pages: bool = Field(default=True)
+    empty_page_max_alnum: int = Field(default=0)
