@@ -17,6 +17,7 @@ from webcon_pdf_splitter.classification.rules import RuleBasedClassifier, normal
 from webcon_pdf_splitter.config import SplitterSettings, normalize_empty_page_mode
 from webcon_pdf_splitter.contracts import PatternPayload, SplitResult
 from webcon_pdf_splitter.ocr import (
+    OcrEngine,
     PdfTextOcrEngine,
     TesseractPageOcr,
     TextLayerWithOcrFallback,
@@ -119,7 +120,7 @@ def process(
     filename: str,
     patterns_field: str | None,
     *,
-    ocr=None,
+    ocr: OcrEngine | None = None,
 ) -> SplitResult:
     """Rdzen przetwarzania: PDF na dysku -> podzielone dokumenty.
 

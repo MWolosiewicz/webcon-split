@@ -133,7 +133,7 @@ def test_blad_przy_usunianiu_pliku_nie_zabija_workera(monkeypatch):
         assert _wait_for(lambda: store.get(pierwsze.job_id).status == "done")
         # Czekamy az drugie zadanie zostanie oznaczone jako done
         assert _wait_for(lambda: store.get(drugie.job_id).status == "done")
-        # Worker jest nadal zyw
+        # Worker jest nadal zywy
         assert worker.is_alive()
     finally:
         worker.stop()
