@@ -47,6 +47,34 @@ def test_split_rejects_missing_token_when_token_configured(monkeypatch):
     assert response.status_code == 401
 
 
+def test_token_spoza_ascii_dziala_w_obie_strony():
+    # Zabezpieczenie refaktoru na porownanie odporne na pomiar czasu:
+    # secrets.compare_digest odmawia porownania napisow spoza ASCII
+    # (TypeError -> 500 zamiast 401/200), wiec token z ogonkami musi
+    # przechodzic przez kodowanie do bajtow.
+    import pytest
+    from fastapi import HTTPException
+
+    settings = SplitterSettings(_env_file=None, api_token="sékret-zażółć")
+
+    api._require_token(settings, "Bearer sékret-zażółć")
+
+    with pytest.raises(HTTPException) as blad:
+        api._require_token(settings, "Bearer zly")
+    assert blad.value.status_code == 401
+
+
+def test_brak_naglowka_autoryzacji_to_401_a_nie_wyjatek():
+    import pytest
+    from fastapi import HTTPException
+
+    settings = SplitterSettings(_env_file=None, api_token="sekret")
+
+    with pytest.raises(HTTPException) as blad:
+        api._require_token(settings, None)
+    assert blad.value.status_code == 401
+
+
 def test_split_accepts_valid_token(monkeypatch, tmp_path):
     # work_dir jawnie w tmp: lifespan startuje z TYMI ustawieniami i zamiata
     # work_dir, wiec nie moze uzyc domyslnego ./work

@@ -1,6 +1,7 @@
 import base64
 import io
 import logging
+import secrets
 import shutil
 import time
 from contextlib import asynccontextmanager, contextmanager
@@ -12,6 +13,7 @@ from uuid import uuid4
 from fastapi import FastAPI, File, Form, Header, HTTPException, Response, UploadFile
 from fastapi.responses import JSONResponse
 from pypdf import PdfReader
+from starlette.concurrency import run_in_threadpool
 
 from webcon_pdf_splitter import metrics
 from webcon_pdf_splitter.config import SplitterSettings
@@ -21,7 +23,13 @@ from webcon_pdf_splitter.contracts import (
     SplitResult,
     SubmitJobResponse,
 )
-from webcon_pdf_splitter.jobs import Job, JobStore, JobWorker, QueueFullError
+from webcon_pdf_splitter.jobs import (
+    Job,
+    JobStore,
+    JobWorker,
+    QueueFullError,
+    empty_stats,
+)
 from webcon_pdf_splitter.pdf_io import (
     extract_pages,
     merge_pdfs,
@@ -188,7 +196,16 @@ app = FastAPI(title="WEBCON PDF Splitter", lifespan=lifespan)
 def _require_token(settings: SplitterSettings, authorization: str | None) -> None:
     if not settings.api_token:
         return
-    if authorization != f"Bearer {settings.api_token}":
+    # compare_digest zamiast "!=": zwykle porownanie napisow konczy sie na
+    # pierwszym roznym znaku, wiec czas odpowiedzi zdradza, ile poczatkowych
+    # znakow tokenu zgadlo sie z prawidlowym.
+    #
+    # Porownujemy BAJTY, nie napisy - compare_digest odmawia porownania
+    # napisow spoza ASCII (TypeError), a token z ogonkami zamienialby wtedy
+    # kazde 401 w 500.
+    expected = f"Bearer {settings.api_token}".encode("utf-8")
+    supplied = (authorization or "").encode("utf-8")
+    if not secrets.compare_digest(supplied, expected):
         raise HTTPException(status_code=401, detail="Invalid or missing API token")
 
 
@@ -228,6 +245,23 @@ def _page_count_of(pdf_bytes: bytes) -> int:
     return len(PdfReader(io.BytesIO(pdf_bytes)).pages)
 
 
+UPLOAD_CHUNK_BYTES = 1024 * 1024
+
+
+def save_upload(source, destination: Path, chunk_size: int = UPLOAD_CHUNK_BYTES) -> None:
+    """Przepisuje przyslany plik na dysk porcjami.
+
+    Synchroniczna z rozmyslu - wola ja run_in_threadpool. Zapis na dysk jest
+    operacja blokujaca, wiec wykonany wprost w endpokcie async wstrzymywalby
+    obsluge WSZYSTKICH pozostalych zapytan na czas zrzutu pliku.
+
+    Porcjami, a nie jednym read(): wczytanie calej paczki do pamieci przy
+    kilku rownoczesnych wysylkach sumuje sie w RAM procesu.
+    """
+    with destination.open("wb") as target:
+        shutil.copyfileobj(source, target, chunk_size)
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -235,10 +269,16 @@ def health() -> dict[str, str]:
 
 @app.get("/metrics")
 def metrics_endpoint(authorization: str | None = Header(default=None)) -> dict:
-    # liczniki skumulowane od startu procesu (w pamieci): odsetek weryfikacji
-    # to glowny wskaznik strojenia slownika i progow
+    # Dwa poziomy w jednej odpowiedzi: liczniki skumulowane od startu procesu
+    # (odsetek weryfikacji - glowny wskaznik strojenia slownika i progow) oraz
+    # "queue" z biezacym stanem kolejki, czyli odpowiedz na pytanie zadawane
+    # przy problemie na produkcji: ile paczek czeka i od kiedy.
     _require_token(get_settings(), authorization)
-    return metrics.registry.snapshot()
+    snapshot = metrics.registry.snapshot()
+    # kolejka powstaje w lifespan - przed nim (sonda konfiguracji, testy)
+    # oddajemy zera zamiast wywracac endpoint
+    snapshot["queue"] = _job_store.stats() if _job_store is not None else empty_stats()
+    return snapshot
 
 
 @app.post("/api/split", response_model=SubmitJobResponse, status_code=202)
@@ -266,7 +306,10 @@ async def split_pdf_endpoint(
     work_dir = Path(settings.work_dir)
     work_dir.mkdir(parents=True, exist_ok=True)
     source_path = work_dir / f"{uuid4().hex}_{filename}"
-    source_path.write_bytes(await file.read())
+    # jawny seek zamiast polegania na tym, gdzie parser multipartu zostawil
+    # wskaznik po zlozeniu czesci
+    await file.seek(0)
+    await run_in_threadpool(save_upload, file.file, source_path)
 
     store = get_job_store()
     try:

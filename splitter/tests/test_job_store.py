@@ -137,3 +137,40 @@ def test_mark_failed_zapisuje_tresc_bledu():
 
 def test_next_job_zwraca_none_gdy_kolejka_pusta():
     assert JobStore().next_job(timeout=0.01) is None
+
+
+def test_statystyki_licza_zadania_wedlug_statusu():
+    store = JobStore()
+    czeka, _ = _submit(store, "czeka.pdf")
+    biegnie, _ = _submit(store, "biegnie.pdf")
+    zepsute, _ = _submit(store, "zepsute.pdf")
+    gotowe, _ = _submit(store, "gotowe.pdf")
+    store.mark_running(biegnie.job_id)
+    store.mark_failed(zepsute.job_id, "nieczytelny PDF")
+    store.mark_done(gotowe.job_id, result=None)
+
+    stats = store.stats()
+
+    assert stats["queued"] == 1
+    assert stats["running"] == 1
+    assert stats["failed"] == 1
+    assert stats["done"] == 1
+
+
+def test_statystyki_podaja_wiek_najstarszego_oczekujacego():
+    # to jest wskaznik "czy kolejka rosnie" - sama liczba czekajacych nie
+    # odroznia zdrowego ogona od paczki, ktora utknela na godzine
+    store = JobStore()
+    stary, _ = _submit(store, "stary.pdf")
+    stary.created_at -= 30
+    _submit(store, "swiezy.pdf")
+
+    assert store.stats()["oldest_queued_seconds"] >= 30
+
+
+def test_wiek_najstarszego_jest_zerem_gdy_nikt_nie_czeka():
+    store = JobStore()
+    job, _ = _submit(store)
+    store.mark_running(job.job_id)
+
+    assert store.stats()["oldest_queued_seconds"] == 0.0

@@ -276,6 +276,52 @@ def test_dwa_workery_nie_mieszaja_wynikow_paczek(tmp_path, monkeypatch):
             assert len(PdfReader(io.BytesIO(content)).pages) == pages
 
 
+def test_zapis_uploadu_czyta_zrodlo_porcjami(tmp_path):
+    # REGRESJA: caly PDF wchodzil do pamieci jedna operacja (await file.read()),
+    # wiec kilka rownoczesnych wysylek sumowalo sie w RAM procesu
+    class _LiczacyOdczyty(io.BytesIO):
+        def __init__(self, data):
+            super().__init__(data)
+            self.rozmiary = []
+
+        def read(self, size=-1):
+            self.rozmiary.append(size)
+            return super().read(size)
+
+    zrodlo = _LiczacyOdczyty(b"x" * 10_000)
+    cel = tmp_path / "zapisany.bin"
+
+    api.save_upload(zrodlo, cel, chunk_size=1024)
+
+    assert cel.read_bytes() == b"x" * 10_000
+    # -1 (czytaj wszystko) albo cokolwiek wiekszego od porcji = powrot choroby
+    assert all(0 < rozmiar <= 1024 for rozmiar in zrodlo.rozmiary), zrodlo.rozmiary
+
+
+def test_zapis_uploadu_nie_biegnie_na_petli_zdarzen(client, monkeypatch):
+    # Zapis na dysk jest synchroniczny. Wykonany wprost w endpokcie async
+    # wstrzymywalby WSZYSTKIE pozostale zapytania na czas zrzutu pliku -
+    # czyli /health i odpytywanie o status, dokladnie te objawy, ktore
+    # kolejka zadan miala usunac.
+    import asyncio
+
+    zapis = {}
+    oryginal = api.save_upload
+
+    def _szpieg(source, destination, chunk_size=api.UPLOAD_CHUNK_BYTES):
+        try:
+            asyncio.get_running_loop()
+            zapis["na_petli"] = True
+        except RuntimeError:
+            zapis["na_petli"] = False
+        return oryginal(source, destination, chunk_size)
+
+    monkeypatch.setattr(api, "save_upload", _szpieg)
+
+    assert _submit(client).status_code == 202
+    assert zapis["na_petli"] is False
+
+
 def test_zamiatanie_work_dir_przy_starcie(tmp_path, monkeypatch):
     from webcon_pdf_splitter.config import SplitterSettings
 

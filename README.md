@@ -338,6 +338,20 @@ a te same wielkości skumulowane od startu procesu zwraca `GET /metrics` —
 `review_rate` (odsetek dokumentów do weryfikacji) to główny wskaźnik, czy
 zmiany słownika i progów faktycznie poprawiają automatykę.
 
+`GET /metrics` zwraca dodatkowo sekcję `queue` z **bieżącym** stanem kolejki
+(to nie są liczniki od startu, tylko zdjęcie chwili):
+
+```json
+"queue": { "queued": 3, "running": 1, "done": 2, "failed": 0,
+           "oldest_queued_seconds": 47.2 }
+```
+
+Przy problemie na produkcji pierwsze pytanie brzmi „ile paczek czeka i od
+kiedy" — i to `oldest_queued_seconds` na nie odpowiada. Sama liczba
+czekających nie odróżnia zdrowego ogona od zatoru: dziesięć paczek
+z `oldest_queued_seconds` rzędu kilkudziesięciu sekund to normalna praca,
+te same dziesięć z wartością rzędu godziny to zablokowany worker.
+
 Fragment `znorm` porównuje się 1:1 z nagłówkami i frazami ze słownika (nagłówek
 musi wystąpić w pierwszych ~1200 znormalizowanych znakach). Dodatkowo OCR loguje
 `OCR: uzupelniono tekst N stron (strony: [...])` oraz `OCR nie poprawil stron [...]
@@ -357,7 +371,7 @@ Dockerfile.
 | Endpoint | Opis |
 |---|---|
 | `GET /health` | Kontrola życia serwisu → `{"status":"ok"}`. Odpowiada także w trakcie przetwarzania paczki |
-| `GET /metrics` | Liczniki skumulowane od startu procesu (JSON, w pamięci): żądania, strony (w tym uzupełnione OCR), wywołania LLM, dokumenty, odsetek weryfikacji (`review_rate`), łączny czas przetwarzania. Token jak `/api/split` |
+| `GET /metrics` | Liczniki skumulowane od startu procesu (JSON, w pamięci): żądania, strony (w tym uzupełnione OCR), wywołania LLM, dokumenty, odsetek weryfikacji (`review_rate`), łączny czas przetwarzania — **plus sekcja `queue`** z bieżącym stanem kolejki (`queued`, `running`, `done`, `failed`, `oldest_queued_seconds`). Token jak `/api/split` |
 | `POST /api/split` | multipart: `file` (PDF) + `patterns` (JSON, opcjonalne) → **`202`** `{jobId, position}` — zlecenie trafia do kolejki |
 | `GET /api/jobs/{jobId}` | Lekki status zadania (bez base64) — do odpytywania co takt akcji cyklicznej |
 | `GET /api/jobs/{jobId}/result` | Pełny `SplitResult` z plikami (base64) — po `status=done` |

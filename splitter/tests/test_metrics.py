@@ -147,6 +147,37 @@ def test_split_updates_metrics_endpoint_and_logs_summary(caplog):
     assert any("Metryki zadania" in record.getMessage() for record in caplog.records)
 
 
+def test_metrics_pokazuje_biezacy_stan_kolejki():
+    # liczniki skumulowane mowia, jak dobrze klasyfikujemy; przy problemie na
+    # produkcji pierwsze pytanie brzmi jednak "ile paczek czeka i od kiedy"
+    import threading
+
+    trzymaj = threading.Event()
+    with TestClient(api.app) as client:
+        api_run_job = api.run_job
+        api.run_job = lambda job: trzymaj.wait(timeout=5)
+        try:
+            client.post(
+                "/api/split",
+                files={"file": ("paczka.pdf", _single_blank_page_pdf_bytes(), "application/pdf")},
+            )
+            snapshot = client.get("/metrics").json()
+        finally:
+            trzymaj.set()
+            api.run_job = api_run_job
+
+    assert snapshot["queue"]["queued"] + snapshot["queue"]["running"] == 1
+    assert snapshot["queue"]["oldest_queued_seconds"] >= 0.0
+
+
+def test_metrics_dziala_gdy_kolejka_nie_wystartowala():
+    # /metrics musi odpowiedziec takze przed lifespan (np. sonda konfiguracji),
+    # zamiast wywracac sie na braku kolejki
+    snapshot = TestClient(api.app).get("/metrics").json()
+
+    assert snapshot["queue"]["queued"] == 0
+
+
 def test_metrics_endpoint_requires_token_when_configured(monkeypatch):
     monkeypatch.setattr(
         api, "get_settings", lambda: SplitterSettings(_env_file=None, api_token="sekret")

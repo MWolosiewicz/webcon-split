@@ -17,6 +17,21 @@ class QueueFullError(Exception):
     """Kolejka osiagnela SPLITTER_MAX_QUEUE_SIZE - warstwa HTTP odda 503."""
 
 
+def empty_stats() -> dict:
+    """Ksztalt statystyk dla kolejki, ktora jeszcze nie wystartowala.
+
+    Jedno zrodlo prawdy o kluczach: /metrics musi odpowiedziec takze przed
+    lifespan, a nie powtarzac tej listy u siebie.
+    """
+    return {
+        "queued": 0,
+        "running": 0,
+        "done": 0,
+        "failed": 0,
+        "oldest_queued_seconds": 0.0,
+    }
+
+
 def _unlink_quietly(path: str) -> None:
     """Kasuje plik, nigdy nie rzucajac.
 
@@ -153,6 +168,25 @@ class JobStore:
                 if self._jobs[other_id].status == "queued":
                     earlier += 1
             return earlier + 1
+
+    def stats(self) -> dict:
+        """Biezacy stan kolejki (nie liczniki od startu procesu).
+
+        Wiek najstarszego oczekujacego jest tu wazniejszy niz sama liczba
+        czekajacych: dziesiec paczek w kolejce to zdrowy ogon albo objaw
+        zatoru - odroznia je dopiero to, od kiedy czekaja.
+        """
+        with self._lock:
+            stats = empty_stats()
+            now = time.time()
+            oldest = 0.0
+            for job in self._jobs.values():
+                if job.status in stats:
+                    stats[job.status] += 1
+                if job.status == "queued":
+                    oldest = max(oldest, now - job.created_at)
+            stats["oldest_queued_seconds"] = round(oldest, 1)
+            return stats
 
     def mark_running(self, job_id: str) -> None:
         with self._lock:
