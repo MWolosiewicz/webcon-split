@@ -166,6 +166,14 @@ inaczej trzeba by "cofac" juz podjete decyzje.
 | `SPLITTER_BLANK_MAX_INK_RATIO` | `0.002` | Udzial ciemnych pikseli, ponizej ktorego strona jest wizualnie pusta |
 | `SPLITTER_BLANK_MARGIN_RATIO` | `0.04` | Odcinany margines (krawedzie skanera, dziurki, przekrzywienie) |
 
+**Parametry liczbowe zostaja fail-fast** (decyzja swiadoma): nieparsowalna
+wartosc zatrzymuje start serwisu, jak kazde inne pole pydantic. Ryzykiem jest
+tu polski odruch zapisu `0,002` zamiast `0.002` - adresowane **dokumentacja**:
+`.env.example` musi zawierac wyrazna adnotacje "separator dziesietny to KROPKA,
+nie przecinek" przy tych zmiennych. Wyjatkiem pozostaje
+`SPLITTER_EMPTY_PAGE_MODE` (wartosc tekstowa): nieznana wartosc -> `keep`
++ ostrzezenie, bo bezpieczny stan jest tam wazniejszy niz sygnal o literowce.
+
 ## Zakres zmian w kodzie
 
 - **`splitter/src/webcon_pdf_splitter/blank_pages.py`** (nowy modul):
