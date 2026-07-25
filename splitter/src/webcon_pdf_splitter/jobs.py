@@ -150,3 +150,41 @@ class JobStore:
             return False
         Path(job.source_path).unlink(missing_ok=True)
         return True
+
+
+class JobWorker(threading.Thread):
+    """Watek konsumujacy kolejke zadan po jednym na raz.
+
+    Zadna porazka pojedynczego zadania nie moze przerwac petli - inaczej
+    kolejka staje na zawsze i nic tego nie zglasza.
+    """
+
+    def __init__(self, store: JobStore, processor, name: str = "job-worker") -> None:
+        super().__init__(name=name, daemon=True)
+        self._store = store
+        self._processor = processor
+        self._stopped = threading.Event()
+
+    def stop(self) -> None:
+        self._stopped.set()
+
+    def run(self) -> None:
+        while not self._stopped.is_set():
+            job = self._store.next_job(timeout=0.2)
+            if job is None:
+                continue
+            self._run_one(job)
+
+    def _run_one(self, job: Job) -> None:
+        self._store.mark_running(job.job_id)
+        try:
+            result = self._processor(job)
+        except Exception as exc:
+            logger.warning(
+                "Zadanie %s zakonczone bledem: %s", job.job_id, exc, exc_info=True
+            )
+            self._store.mark_failed(job.job_id, str(exc))
+        else:
+            self._store.mark_done(job.job_id, result)
+        finally:
+            Path(job.source_path).unlink(missing_ok=True)
