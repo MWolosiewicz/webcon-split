@@ -46,6 +46,16 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
     private async Task<string> HandleAsync(RunCustomActionParams args)
     {
         SplitJobSubmitter.RequireJobIdField(Configuration);
+        RequireOutcomeField();
+
+        // Element z ustalonym wynikiem czeka juz tylko na przejscie sciezka
+        // po stronie WEBCON - nie wolno go wtedy dotykac. Bez tej bramki
+        // kolejny takt zobaczylby wypelnione jobId, dostal 404 na skasowane
+        // zadanie i zlecil podzial jeszcze raz: paczka gotowa przeszlaby
+        // caly OCR po raz drugi.
+        var outcome = SplitJobSubmitter.GetField(args, Configuration.OutcomeFieldId, "");
+        if (!string.IsNullOrWhiteSpace(outcome))
+            return $"Wynik '{outcome}' juz ustalony - czekam na przejscie sciezka.";
 
         var jobId = SplitJobSubmitter.GetField(args, Configuration.JobIdFieldId, "");
         if (string.IsNullOrWhiteSpace(jobId))
@@ -151,7 +161,6 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
         if (result == null)
             return await HandleLostJobAsync(args, jobId);
 
-        RequireOutcomeField();
         var targetWorkflowId = ParseId(Configuration.TargetWorkflowId, "Target workflow ID");
         var targetDocTypeId = ParseId(Configuration.TargetDocTypeId, "Target document type ID");
         var startPathId = ParseId(Configuration.StartPathId, "Start path ID");
@@ -226,7 +235,6 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
 
     private async Task<string> MarkErrorAsync(RunCustomActionParams args, string reason)
     {
-        RequireOutcomeField();
         await SplitJobSubmitter.SetFieldAsync(args, Configuration.StatusFieldId, reason);
         await SplitJobSubmitter.SetFieldAsync(
             args, Configuration.OutcomeFieldId, SplitJobOutcome.Error);
