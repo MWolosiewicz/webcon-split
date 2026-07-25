@@ -32,6 +32,10 @@ public class SubmitSplitJobAction : CustomAction<SubmitSplitJobActionConfig>
             // konczylaby "pomyslnie" z zerem elementow potomnych.
             await SplitJobSubmitter.SetFieldAsync(args, Configuration.AttemptsFieldId, 0);
             await SplitJobSubmitter.SetFieldAsync(args, Configuration.LastCreatedIndexFieldId, 0);
+            // pole wyniku MUSI byc wyczyszczone: to na nim opiera sie przejscie
+            // sciezka po stronie WEBCON, wiec pozostawiona wartosc BLAD albo
+            // GOTOWE natychmiast wypchnelaby element z kroku przetwarzania
+            await SplitJobSubmitter.SetFieldAsync(args, Configuration.OutcomeFieldId, "");
 
             var message = await SplitJobSubmitter.SubmitAsync(
                 args, Configuration, Configuration.PatternsDataSourceId);

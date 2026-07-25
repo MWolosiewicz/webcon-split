@@ -58,27 +58,11 @@ public class CollectSplitJobActionConfig : SplitJobFieldsConfig
 
     [ConfigEditableInteger(
         DisplayName = "Max attempts",
-        Description = "Po ilu NIEUDANYCH probach (404 lub failed) element idzie na sciezke bledu. " +
+        Description = "Po ilu NIEUDANYCH probach (404 lub failed) element jest oznaczany jako bledny. " +
                       "Zajetosc serwisu (503) i brak polaczenia sie nie licza.",
         DefaultValue = 3,
         MinValue = 1,
         MaxValue = 20,
         Order = 36)]
     public int MaxAttempts { get; set; } = 3;
-
-    [ConfigEditableText(
-        DisplayName = "Error path ID",
-        Description = "ID sciezki na krok bledu (przekroczony limit prob albo zadanie zakonczone bledem).",
-        IsRequired = true,
-        TagEvaluationMode = EvaluationMode.Default,
-        Order = 37)]
-    public string ErrorPathId { get; set; } = "";
-
-    [ConfigEditableText(
-        DisplayName = "Done path ID",
-        Description = "ID sciezki na krok koncowy paczki po udanym podziale.",
-        IsRequired = true,
-        TagEvaluationMode = EvaluationMode.Default,
-        Order = 38)]
-    public string DonePathId { get; set; } = "";
 }

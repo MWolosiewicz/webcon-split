@@ -39,4 +39,25 @@ public class SplitJobFieldsConfig : SplitterConnectionConfig
                       "Pozwala wznowic odbior po awarii bez duplikatow. Puste = brak wznawiania.",
         Order = 24)]
     public int? LastCreatedIndexFieldId { get; set; }
+
+    [ConfigEditableFormFieldID(
+        DisplayName = "Outcome field ID",
+        Description = "Pole tekstowe na wynik przetwarzania: '" + SplitJobOutcome.Done +
+                      "' albo '" + SplitJobOutcome.Error + "' (puste = jeszcze trwa). " +
+                      "Na tym polu opiera sie przejscie sciezka po stronie WEBCON. WYMAGANE.",
+        Order = 25)]
+    public int? OutcomeFieldId { get; set; }
+}
+
+/// <summary>
+/// Wartosci pola wyniku. Akcja NIE przenosi elementu sciezka - SDK na to nie
+/// pozwala: proba wywolania MoveDocumentToNextStepAsync na wlasnym elemencie
+/// konczy sie "Workflow instance is being saved", bo WEBCON trzyma go otwartego
+/// do zapisu przez caly czas wykonania akcji. Zamiast tego akcja zapisuje tu
+/// wynik, a przejscie wykonuje mechanizm WEBCON warunkiem na tym polu.
+/// </summary>
+public static class SplitJobOutcome
+{
+    public const string Done = "GOTOWE";
+    public const string Error = "BLAD";
 }

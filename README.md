@@ -468,6 +468,28 @@ Pola na formularzu paczki (ID podaje się w konfiguracji obu akcji):
 | Status przetwarzania | tekst | Dla operatora: „3. w kolejce" / „8 dok., 2 do weryfikacji" / treść błędu |
 | Liczba prób | liczba | Ochrona przed pętlą ponowień (rośnie tylko przy `404`/`failed`, **nie** przy zajętości) |
 | Ostatni utworzony dokument | liczba | Wznawianie odbioru po awarii bez duplikatów (`documentIndex`) |
+| **Wynik przetwarzania** | tekst | `GOTOWE` / `BLAD` / puste — **wyzwalacz przejścia ścieżką po stronie WEBCON** |
+
+### Dlaczego przejście wykonuje WEBCON, a nie akcja
+
+Akcja SDK **nie może przenieść własnego elementu**. `DocumentsManager.MoveDocumentToNextStepAsync`
+służy do przesuwania *innych* elementów; wywołana na elemencie, w którego kontekście
+działa, kończy się wyjątkiem:
+
+```
+SDKOperationException: Workflow instance is being saved.
+  at ElementFormEnsurer.EnsureRequestsSafety()
+```
+
+WEBCON trzyma element otwarty do zapisu przez cały czas wykonania akcji, a
+`RunCustomActionParams.TransitionInfo` jest tylko do odczytu — w SDK nie ma
+żadnej właściwości pozwalającej wskazać ścieżkę dla bieżącego elementu.
+
+Dlatego `CollectSplitJobAction` **kończy pracę zapisem pola „Wynik przetwarzania"**
+(`GOTOWE` albo `BLAD`), a samo przejście konfigurujesz w Designer Studio jako
+przejście warunkowe na tym polu. Akcja zlecająca czyści to pole przy każdym
+wejściu w obieg, więc paczka puszczona ponownie po błędzie nie zostanie
+natychmiast wypchnięta ze starą wartością.
 
 ### Konfiguracja akcji „SubmitSplitJobAction" (przejście z Rejestracji)
 
@@ -479,6 +501,7 @@ Pola na formularzu paczki (ID podaje się w konfiguracji obu akcji):
 | Patterns data source ID | tak | Źródło danych z aktywnymi wzorcami (kolumny niżej) |
 | Job ID field ID | tak | Pole tekstowe na `jobId` |
 | Submitted at field ID | tak | Pole daty i czasu z momentem zlecenia |
+| Outcome field ID | tak | Pole tekstowe na `GOTOWE`/`BLAD` — wyzwalacz przejścia |
 | Status field ID | nie | Pole tekstowe na status dla operatora |
 | Attempts field ID | nie | Pole liczbowe z liczbą nieudanych prób |
 | Last created document index field ID | nie | Pole liczbowe do wznawiania odbioru |
@@ -495,15 +518,14 @@ Wszystkie pola powyżej (wspólna konfiguracja połączenia i pól paczki), plus
 | Requires review field ID | nie | Pole tak/nie na `requiresReview`; puste = pomijane |
 | Review reasons field ID | nie | Pole tekstowe (wieloliniowe) na powody. Ustawione → powody tylko do pola; puste → do komentarza elementu |
 | Parent element ID field ID | nie | Pole na ID elementu nadrzędnego; relacja systemowa rodzic–dziecko jest ustawiana zawsze |
-| Max attempts | nie (3) | Po ilu **nieudanych** próbach (`404`/`failed`) element idzie na ścieżkę błędu. Zajętość (`503`) i brak połączenia się nie liczą |
-| Error path ID | tak | Ścieżka na krok Błąd |
-| Done path ID | tak | Ścieżka na krok Podzielona |
+| Max attempts | nie (3) | Po ilu **nieudanych** próbach (`404`/`failed`) element dostaje `BLAD`. Zajętość (`503`) i brak połączenia się nie liczą |
 
 Logika taktu `CollectSplitJobAction`: brak `jobId` → zleca (wspólna ścieżka dla
 `503`, błędu sieci, `404` i wygasłego wyniku); `queued`/`running` → aktualizuje
 pole statusu; `done` → pobiera wynik, tworzy dokumenty potomne (wznawiając od
-`documentIndex` > „Ostatni utworzony dokument"), kasuje zadanie, przechodzi na
-Podzieloną; `failed`/`404` → licznik prób, powyżej limitu ścieżka na Błąd.
+`documentIndex` > „Ostatni utworzony dokument"), kasuje zadanie i zapisuje
+`GOTOWE`; `failed`/`404` → licznik prób, powyżej limitu zapisuje `BLAD`.
+Przejście ścieżką wykonuje WEBCON na podstawie pola wyniku — patrz wyżej.
 
 ID obiektów: Designer Studio → właściwości obiektu → ID (włącz „Pokaż identyfikatory
 obiektów", jeśli niewidoczne).

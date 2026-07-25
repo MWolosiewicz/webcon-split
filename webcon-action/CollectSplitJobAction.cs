@@ -17,7 +17,14 @@ namespace WebconPdfSplitterAction;
 /// Brak jobId, 404 i wygasly wynik prowadza do TEJ SAMEJ sciezki
 /// (zlec ponownie) - zrodlem prawdy jest zalacznik w WEBCONie.
 /// Licznik prob rosnie tylko przy 404/failed; zajetosc uslugi nie jest
-/// awaria i nie moze wypchnac elementu na sciezke bledu.
+/// awaria i nie moze oznaczyc elementu jako bledny.
+///
+/// Akcja NIE przenosi elementu sciezka. SDK nie daje na to sposobu:
+/// MoveDocumentToNextStepAsync na wlasnym elemencie konczy sie wyjatkiem
+/// "Workflow instance is being saved", bo WEBCON trzyma element otwarty do
+/// zapisu przez caly czas wykonania akcji, a TransitionInfo jest tylko do
+/// odczytu. Zamiast tego akcja zapisuje wynik w polu (SplitJobOutcome),
+/// a przejscie wykonuje mechanizm WEBCON z warunkiem na tym polu.
 /// </summary>
 public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
 {
@@ -108,7 +115,7 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
         var attempts = SplitJobSubmitter.GetField(args, Configuration.AttemptsFieldId, 0) + 1;
         await SplitJobSubmitter.SetFieldAsync(args, Configuration.AttemptsFieldId, attempts);
         if (attempts >= Configuration.MaxAttempts)
-            return await MoveToErrorAsync(
+            return await MarkErrorAsync(
                 args, $"Zadanie {jobId} przepadlo {attempts} raz(y) - limit prob wyczerpany.");
 
         // wyczyszczenie jobId sprowadza element do stanu "brak zadania",
@@ -129,7 +136,7 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
         // a nikt by o nie wiecej nie zapytal
         await client.DeleteJobAsync(jobId);
         if (attempts >= Configuration.MaxAttempts)
-            return await MoveToErrorAsync(args, $"Zadanie {jobId} zakonczone bledem: {error}");
+            return await MarkErrorAsync(args, $"Zadanie {jobId} zakonczone bledem: {error}");
 
         await SplitJobSubmitter.SetFieldAsync(args, Configuration.JobIdFieldId, "");
         await SplitJobSubmitter.SetFieldAsync(
@@ -144,6 +151,7 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
         if (result == null)
             return await HandleLostJobAsync(args, jobId);
 
+        RequireOutcomeField();
         var targetWorkflowId = ParseId(Configuration.TargetWorkflowId, "Target workflow ID");
         var targetDocTypeId = ParseId(Configuration.TargetDocTypeId, "Target document type ID");
         var startPathId = ParseId(Configuration.StartPathId, "Start path ID");
@@ -203,8 +211,10 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
         await SplitJobSubmitter.SetFieldAsync(
             args, Configuration.StatusFieldId,
             $"{status.DocumentCount} dok., {status.DocumentsRequiringReview} do weryfikacji");
-
-        await MovePathAsync(args, ParseId(Configuration.DonePathId, "Done path ID"));
+        // wynik zapisujemy NA KONCU: dopiero teraz element jest naprawde
+        // gotowy do przejscia, a to pole jest wyzwalaczem przejscia w WEBCON
+        await SplitJobSubmitter.SetFieldAsync(
+            args, Configuration.OutcomeFieldId, SplitJobOutcome.Done);
 
         var warningsText = result.Warnings.Count > 0
             ? " Warnings: " + string.Join(" | ", result.Warnings) + "."
@@ -214,27 +224,22 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
                $"{string.Join(", ", createdIds)}{warningsText}";
     }
 
-    private async Task<string> MoveToErrorAsync(RunCustomActionParams args, string reason)
+    private async Task<string> MarkErrorAsync(RunCustomActionParams args, string reason)
     {
+        RequireOutcomeField();
         await SplitJobSubmitter.SetFieldAsync(args, Configuration.StatusFieldId, reason);
-        await MovePathAsync(args, ParseId(Configuration.ErrorPathId, "Error path ID"));
+        await SplitJobSubmitter.SetFieldAsync(
+            args, Configuration.OutcomeFieldId, SplitJobOutcome.Error);
         return reason;
     }
 
-    private static async Task MovePathAsync(RunCustomActionParams args, int pathId)
+    private void RequireOutcomeField()
     {
-        // Sygnatura zweryfikowana refleksja (WEBCON.BPS.2026.SDK 26.1.6.209):
-        // nie ma CurrentDocument.MoveToNextStepAsync - przejscie sciezka robi
-        // DocumentsManager.MoveDocumentToNextStepAsync(MoveDocumentToNextStepParams),
-        // a CurrentDocumentData dziedziczy z ExistingDocumentData, wiec mozna
-        // ja podac wprost jako Document.
-        var manager = new DocumentsManager(args.Context);
-        await manager.MoveDocumentToNextStepAsync(
-            new MoveDocumentToNextStepParams
-            {
-                Document = args.Context.CurrentDocument,
-                PathID = pathId,
-            });
+        if (Configuration.OutcomeFieldId.GetValueOrDefault() <= 0)
+            throw new InvalidOperationException(
+                "Konfiguracja akcji wymaga wypelnionego pola 'Outcome field ID' - " +
+                "bez niego WEBCON nie ma na czym oprzec przejscia sciezka, " +
+                "a element utknalby w kroku przetwarzania.");
     }
 
     private static int ParseId(string configuredValue, string fieldName)
