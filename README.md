@@ -108,11 +108,13 @@ Za protokołem `OcrEngine` stoi kompozyt `TextLayerWithOcrFallback`:
 
 - **Uruchom OCR** — `SPLITTER_OCR_MIN_TEXT_CHARS` (25, konfigurowalny). Wysoki,
   aby strona z samą stopką skanera trafiła do OCR.
-- **Omiń LLM / usuń (pusta strona)** — strona jest „pusta", gdy ma **≤
+- **Omiń LLM (strona tekstowo pusta)** — strona ma **≤
   `SPLITTER_EMPTY_PAGE_MAX_ALNUM`** znaków alfanumerycznych, również po OCR
-  (domyślnie 0). Krótka, ale realna strona nie jest uznawana za pustą i idzie
-  normalnie do LLM. Puste strony przy `SPLITTER_DROP_EMPTY_PAGES=true`
-  (domyślnie) są usuwane z wyników — patrz „Grupowanie stron".
+  (domyślnie 0). Nie ma czego posłać do modelu, więc LLM jest pomijany.
+  Krótka, ale realna strona nie jest uznawana za pustą i idzie normalnie do LLM.
+
+Sam brak tekstu **nie oznacza pustej strony** — o tym decyduje osobno ocena
+obrazu (`SPLITTER_BLANK_MAX_INK_RATIO`), patrz „Grupowanie stron", punkt 3.
 
 OCR nigdy nie wywraca żądania: brak binarki / timeout (`SPLITTER_OCR_TIMEOUT_SECONDS`,
 30 s) / błąd renderu → strona traktowana jak pusta, pozostałe strony przetwarzane
@@ -153,16 +155,16 @@ Dla kolejnych stron (każda należy do dokładnie jednego dokumentu):
 1. **Nagłówek pasuje** (strona pierwsza) → nowy dokument.
 2. **≥1 fraza typu bieżącego dokumentu** (powinowactwo) → kontynuacja bieżącego
    dokumentu (bez LLM).
-3. **Strona pusta** (≤ `SPLITTER_EMPTY_PAGE_MAX_ALNUM` znaków, też po OCR) →
-   **omija LLM**; przy `SPLITTER_DROP_EMPTY_PAGES=true` (domyślnie) jest
-   **usuwana** z wyników (nie trafia do żadnego pliku, nie wymusza weryfikacji);
-   puste strony ze środka dokumentu lądują w `removedPages` i w komentarzu
-   dziecka, a podsumowanie usunięć w `warnings` + logu operacji. Przy `false` —
-   doklejana do bieżącego dokumentu z wymuszonym `requiresReview` i powodem
-   „strona N bez tekstu (rowniez po OCR) - dolaczona automatycznie". **Gdy
-   usunięcie zostawiłoby 0 dokumentów (np. awaria OCR), cała paczka trafia jako
-   jeden „Nieznany typ dokumentu" do weryfikacji** — funkcja nigdy nie gubi
-   paczki po cichu.
+3. **Strona pusta** → o pustce decyduje **obraz**, nie tekst. Strona jest
+   usuwana wyłącznie gdy jednocześnie (a) render wykazał pokrycie atramentem
+   poniżej `SPLITTER_BLANK_MAX_INK_RATIO` i (b) ma ≤ `SPLITTER_EMPTY_PAGE_MAX_ALNUM`
+   znaków. Sam brak tekstu **nie wystarczy** — skan dowodu osobistego czy
+   rejestracyjnego bywa dla OCR nieczytelny, a strona jest pełna treści.
+   Zachowanie zależy od `SPLITTER_EMPTY_PAGE_MODE`: `keep` (domyślnie) dokleja
+   z `requiresReview`, `report` tylko raportuje, `remove` usuwa. Bezpiecznik
+   `SPLITTER_EMPTY_PAGE_MAX_SHARE` blokuje masowe usunięcia (np. przy awarii
+   OCR), a cała paczka nigdy nie zostaje usunięta. Strony wizualnie puste
+   **omijają OCR i LLM** — to również oszczędność czasu.
 4. **W innym wypadku (ma tekst, brak dopasowania)** → fallback LLM (jeśli włączony).
 5. **Fallback bez werdyktu / LLM wyłączony** → strona doklejana do bieżącego
    dokumentu z wymuszonym `requiresReview` i sygnałem `glued_unknown_page:N`.
@@ -242,8 +244,30 @@ opcji) są ignorowane — nie wywracają startu. Szablon: [`splitter/.env.exampl
 | `SPLITTER_OCR_DPI` | `300` | Rozdzielczość renderu strony do OCR |
 | `SPLITTER_OCR_TIMEOUT_SECONDS` | `30` | Limit czasu OCR jednej strony |
 | `SPLITTER_OCR_WORKERS` | `2` | Liczba równoległych wątków OCR (procesów Tesseracta); render stron pozostaje sekwencyjny. Więcej = szybsze duże paczki kosztem CPU/RAM |
-| `SPLITTER_DROP_EMPTY_PAGES` | `true` | Puste strony są usuwane z wyników zamiast doklejania z `requiresReview`. `false` = stare zachowanie (doklejanie + flaga). Gdy usunięcie zostawiłoby 0 dokumentów (np. awaria OCR), cała paczka trafia jako jeden „Nieznany typ dokumentu" do weryfikacji |
-| `SPLITTER_EMPTY_PAGE_MAX_ALNUM` | `0` | Do ilu znaków alfanum. po OCR strona jest uznawana za pustą (0 = tylko całkiem bez tekstu; >0 łapie szum OCR na blankach). Trzymać małe — wysokie ryzykuje utratę stron ze skąpą treścią |
+| `SPLITTER_EMPTY_PAGE_MODE` | `keep` | `keep` = nic nie usuwa (puste strony doklejane z `requiresReview`); `report` = wykrywa i raportuje, nie usuwa; `remove` = usuwa potwierdzone puste. Nieznana wartość → `keep` + ostrzeżenie |
+| `SPLITTER_EMPTY_PAGE_MAX_ALNUM` | `0` | Do ilu znaków alfanum. strona jest „tekstowo pusta". Warunek usunięcia to **koniunkcja** z oceną obrazu |
+| `SPLITTER_EMPTY_PAGE_MAX_SHARE` | `0.5` | Bezpiecznik: powyżej tego udziału „pustych" stron nie usuwaj nic. Całej paczki nie usuwa nigdy |
+| `SPLITTER_BLANK_DETECT_DPI` | `60` | Rozdzielczość renderu do pomiaru pokrycia atramentem |
+| `SPLITTER_BLANK_MAX_INK_RATIO` | `0.002` | Udział ciemnych pikseli, poniżej którego strona jest wizualnie pusta (0,2%) |
+| `SPLITTER_BLANK_MARGIN_RATIO` | `0.04` | Odcinany margines (krawędzie skanera, dziurki, przekrzywienie) |
+
+**Kalibracja usuwania pustych stron** — nie włączaj `remove` w ciemno:
+
+1. Zostaw `SPLITTER_EMPTY_PAGE_MODE=keep`. Detekcja i tak działa: puste
+   strony pomijają Tesseract (oszczędność czasu), a log pokazuje pokrycie.
+2. Przełącz na `report` i przepuść realne paczki. W logu zobaczysz wpisy
+   `Strona 6: pokrycie atramentem 0.031% -> wizualnie pusta` oraz
+   `Strona 2: pokrycie atramentem 7.204% -> ma tresc (mimo braku tekstu)`,
+   a w `warnings` podsumowanie „co by zostało usunięte".
+3. Gdy wyniki się zgadzają — dopiero wtedy `remove`.
+
+**Migracja:** `SPLITTER_DROP_EMPTY_PAGES` **już nie istnieje** — zastąpiony
+przez `SPLITTER_EMPTY_PAGE_MODE`. Zmienna pozostawiona w `.env` nie wywróci
+serwisu (`extra="ignore"`), ale przestaje cokolwiek znaczyć — usuń ją.
+
+Usuwanie pustych stron wymaga `SPLITTER_OCR_ENABLED=true` (ocena obrazu
+korzysta z tego samego renderu). Przy wyłączonym OCR serwis loguje
+ostrzeżenie i nic nie usuwa.
 
 **Strojenie równoległości OCR (`OMP_THREAD_LIMIT`)** — `SPLITTER_OCR_WORKERS` to
 liczba równoległych **procesów** Tesseracta (po jednym na stronę z bieżącej
