@@ -263,3 +263,49 @@ def test_read_pages_returns_text_and_blank_flag():
         "Pelna umowa o prace z wieloma slowami w warstwie"
     ]
     assert PdfTextOcrEngine().read_pages.__name__ == "read_pages"
+
+
+class _FakeBlankDetector:
+    def __init__(self, blank_indices):
+        self._blank = set(blank_indices)
+        self.calls = []
+
+    def detect_blank_pages(self, pdf_path, page_indices):
+        self.calls.append(list(page_indices))
+        return {i for i in page_indices if i in self._blank}
+
+
+def test_visually_blank_page_skips_ocr_and_is_marked():
+    ocr = _FakePageOcr({1: "NIE POWINNO ZOSTAC UZYTE", 2: "TEKST Z OCR"})
+    detector = _FakeBlankDetector([1])
+    composite = TextLayerWithOcrFallback(
+        page_ocr=ocr,
+        text_layer=_FakeTextLayer(
+            ["Pelna umowa o prace z wieloma slowami w warstwie tekstowej", "", ""]
+        ),
+        min_text_chars=25,
+        blank_detector=detector,
+    )
+
+    reads = composite.read_pages("scan.pdf")
+
+    # detektor dostal kandydatow (strony ubogie w tekst), OCR tylko niepustych
+    assert detector.calls == [[1, 2]]
+    assert ocr.calls == [[2]]
+    assert reads[1].blank is True
+    assert reads[1].text == ""
+    # strona z atramentem nadal przechodzi przez OCR i nie jest pusta
+    assert reads[2].blank is False
+    assert reads[2].text == "TEKST Z OCR"
+
+
+def test_without_detector_no_page_is_marked_blank():
+    composite = TextLayerWithOcrFallback(
+        page_ocr=_FakePageOcr({0: ""}),
+        text_layer=_FakeTextLayer([""]),
+        min_text_chars=25,
+    )
+
+    reads = composite.read_pages("scan.pdf")
+
+    assert reads[0].blank is False

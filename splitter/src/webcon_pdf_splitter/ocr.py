@@ -70,20 +70,43 @@ class TextLayerWithOcrFallback:
     dotkniete strony zostaja puste.
     """
 
-    def __init__(self, page_ocr, text_layer=None, min_text_chars: int = 25) -> None:
+    def __init__(
+        self,
+        page_ocr,
+        text_layer=None,
+        min_text_chars: int = 25,
+        blank_detector=None,
+    ) -> None:
         self._page_ocr = page_ocr
         self._text_layer = text_layer or PdfTextOcrEngine()
         self._min_text_chars = min_text_chars
+        self._blank_detector = blank_detector
 
     def read_pages(self, pdf_path: str) -> list[PageRead]:
         texts = list(self._text_layer.extract_page_texts(pdf_path))
-        empty_indices = [
+        candidates = [
             index
             for index, text in enumerate(texts)
             if alnum_count(text) < self._min_text_chars
         ]
+        # Strony wizualnie puste odsiewamy PRZED Tesseractem: biala kartka
+        # nie ma czego oddac, a kosztuje pelny cykl OCR (w skrajnym wypadku
+        # timeout). Zysk dziala niezaleznie od tego, czy cokolwiek usuwamy.
+        blank_indices: set[int] = set()
+        if self._blank_detector is not None and candidates:
+            blank_indices = self._blank_detector.detect_blank_pages(pdf_path, candidates)
+            if blank_indices:
+                logger.info(
+                    "Pominieto OCR dla %s wizualnie pustych stron: %s",
+                    len(blank_indices),
+                    sorted(index + 1 for index in blank_indices),
+                )
+        empty_indices = [index for index in candidates if index not in blank_indices]
         if not empty_indices:
-            return [PageRead(text=text) for text in texts]
+            return [
+                PageRead(text=text, blank=index in blank_indices)
+                for index, text in enumerate(texts)
+            ]
         try:
             ocr_texts = self._page_ocr.ocr_pages(pdf_path, empty_indices)
         except Exception:
@@ -92,7 +115,10 @@ class TextLayerWithOcrFallback:
                 [i + 1 for i in empty_indices],
                 exc_info=True,
             )
-            return [PageRead(text=text) for text in texts]
+            return [
+                PageRead(text=text, blank=index in blank_indices)
+                for index, text in enumerate(texts)
+            ]
         # Nadpisuj warstwe tekstowa tylko gdy OCR dostarczyl WIECEJ tresci -
         # inaczej krotki, ale realny tekst (albo pusty OCR przy braku binarki)
         # skasowalby oryginal (utrata danych).
@@ -112,7 +138,10 @@ class TextLayerWithOcrFallback:
                 "OCR nie poprawil stron %s - zachowano tekst warstwy",
                 not_improved,
             )
-        return [PageRead(text=text) for text in texts]
+        return [
+            PageRead(text=text, blank=index in blank_indices)
+            for index, text in enumerate(texts)
+        ]
 
     def extract_page_texts(self, pdf_path: str) -> list[str]:
         return [read.text for read in self.read_pages(pdf_path)]
