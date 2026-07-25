@@ -102,3 +102,39 @@ def test_zadanie_jest_oznaczone_jako_running_w_trakcie():
         trzymaj.set()
         worker.stop()
         worker.join(timeout=2)
+
+
+def test_blad_przy_usunianiu_pliku_nie_zabija_workera(monkeypatch):
+    """Test regresyjny: blad usuwania nie przerywa petli workera."""
+    from pathlib import Path
+
+    store = JobStore()
+    pierwsze = _submit(store, "pierwsze.pdf")
+    drugie = _submit(store, "drugie.pdf")
+
+    # Processor dla obu zadan powoduje sukces
+    def processor(job):
+        return "WYNIK"
+
+    # Monkeypatch: Path.unlink dla pierwszego zadania rzuca PermissionError
+    original_unlink = Path.unlink
+
+    def unlink_with_permission_error(self, missing_ok=False):
+        if "pierwsze.pdf" in str(self):
+            raise PermissionError("Plik jest zablokowany")
+        return original_unlink(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", unlink_with_permission_error)
+
+    worker = JobWorker(store, processor=processor)
+    worker.start()
+    try:
+        # Czekamy az pierwsze zadanie zostanie oznaczone jako done
+        assert _wait_for(lambda: store.get(pierwsze.job_id).status == "done")
+        # Czekamy az drugie zadanie zostanie oznaczone jako done
+        assert _wait_for(lambda: store.get(drugie.job_id).status == "done")
+        # Worker jest nadal zyw
+        assert worker.is_alive()
+    finally:
+        worker.stop()
+        worker.join(timeout=2)

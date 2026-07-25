@@ -187,4 +187,11 @@ class JobWorker(threading.Thread):
         else:
             self._store.mark_done(job.job_id, result)
         finally:
-            Path(job.source_path).unlink(missing_ok=True)
+            try:
+                Path(job.source_path).unlink(missing_ok=True)
+            except Exception:
+                logger.warning(
+                    "Nie udalo sie usunac pliku zrodlowego %s - watek pracuje dalej",
+                    job.source_path,
+                    exc_info=True,
+                )
