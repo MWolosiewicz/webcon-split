@@ -38,6 +38,8 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
 
     private async Task<string> HandleAsync(RunCustomActionParams args)
     {
+        SplitJobSubmitter.RequireJobIdField(Configuration);
+
         var jobId = SplitJobSubmitter.GetField(args, Configuration.JobIdFieldId, "");
         if (string.IsNullOrWhiteSpace(jobId))
             return await SplitJobSubmitter.SubmitAsync(
@@ -50,6 +52,14 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
         try
         {
             status = await client.GetJobStatusAsync(jobId);
+        }
+        catch (SplitterBusyException ex)
+        {
+            // 503 przy odpytywaniu (serwis zajety, proxy w trakcie restartu)
+            // znaczy to samo co przy zlecaniu - czekamy, licznik nie rosnie
+            await SplitJobSubmitter.SetFieldAsync(
+                args, Configuration.StatusFieldId, "splitter zajety, ponowienie");
+            return $"Odpytanie zadania {jobId} odroczone: {ex.Message}";
         }
         catch (HttpRequestException ex)
         {
@@ -83,7 +93,7 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
                 return $"Zadanie {jobId} w toku ({status.RunningSeconds:0} s).";
 
             case "failed":
-                return await FailAsync(args, jobId, status.Error ?? "nieznany blad");
+                return await FailAsync(args, client, jobId, status.Error ?? "nieznany blad");
 
             case "done":
                 return await CollectAsync(args, client, jobId, status);
@@ -109,10 +119,15 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
         return $"Zadanie {jobId} nieznane splitterowi - zlecenie zostanie powtorzone (proba {attempts}).";
     }
 
-    private async Task<string> FailAsync(RunCustomActionParams args, string jobId, string error)
+    private async Task<string> FailAsync(
+        RunCustomActionParams args, SplitterClient client, string jobId, string error)
     {
         var attempts = SplitJobSubmitter.GetField(args, Configuration.AttemptsFieldId, 0) + 1;
         await SplitJobSubmitter.SetFieldAsync(args, Configuration.AttemptsFieldId, attempts);
+        // zadanie zakonczone bledem juz nas nie interesuje - bez tego
+        // kasowania zostawaloby po stronie splittera do wygasniecia TTL,
+        // a nikt by o nie wiecej nie zapytal
+        await client.DeleteJobAsync(jobId);
         if (attempts >= Configuration.MaxAttempts)
             return await MoveToErrorAsync(args, $"Zadanie {jobId} zakonczone bledem: {error}");
 

@@ -26,9 +26,25 @@ namespace WebconPdfSplitterAction;
 /// </summary>
 public static class SplitJobSubmitter
 {
+    /// <summary>
+    /// Pole na jobId jest technicznie opcjonalne (int?, bo Designer Studio
+    /// wywraca akcje na niewypelnionym polu typu int), ale bez niego kolejka
+    /// nie dziala: zapis jobId bylby cichym no-opem, wiec kazdy takt akcji
+    /// odbierajacej widzialby "brak zadania" i zlecal podzial od nowa -
+    /// pelny OCR calej paczki co minute, bezterminowo, bez zadnego bledu.
+    /// </summary>
+    public static void RequireJobIdField(SplitJobFieldsConfig config)
+    {
+        if (config.JobIdFieldId.GetValueOrDefault() <= 0)
+            throw new InvalidOperationException(
+                "Konfiguracja akcji wymaga wypelnionego pola 'Job ID field ID' - " +
+                "bez niego identyfikator zadania nie ma gdzie zostac zapisany.");
+    }
+
     public static async Task<string> SubmitAsync(
         RunCustomActionParams args, SplitJobFieldsConfig config, int patternsDataSourceId)
     {
+        RequireJobIdField(config);
         var elementId = args.Context.CurrentDocument.ID;
         var patterns = await LoadPatternsAsync(args, patternsDataSourceId);
         var patternsWarning = patterns.Count == 0
@@ -73,6 +89,17 @@ public static class SplitJobSubmitter
             // niedostepnosc, nie jak blad elementu
             await SetFieldAsync(args, config.StatusFieldId, "splitter nie odpowiada, ponowienie");
             return patternsWarning + $"Zlecenie nieudane (timeout), ponowienie pozniej: {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            // ZADEN blad komunikacji nie moze zablokowac przejscia sciezka
+            // uzytkownikowi: 502/504 z reverse proxy, 401 po zmianie tokenu,
+            // stary kontener bez jobId. Wszystko to mija albo wymaga reakcji
+            // administratora - element czeka w kroku przetwarzania, a akcja
+            // odbierajaca ponawia. Bledy konfiguracji i zalacznikow leca
+            // wyzej, bo powstaja PRZED tym blokiem.
+            await SetFieldAsync(args, config.StatusFieldId, "blad komunikacji, ponowienie");
+            return patternsWarning + $"Zlecenie nieudane, ponowienie pozniej: {ex.Message}";
         }
     }
 

@@ -244,7 +244,7 @@ opcji) są ignorowane — nie wywracają startu. Szablon: [`splitter/.env.exampl
 | `SPLITTER_LOG_PAGE_TEXT` | `true` | Loguje per strona tekst odczytany z warstwy/OCR: fragment surowy + fragment znormalizowany (ASCII, wielkie litery) — dokładnie w postaci, w jakiej klasyfikator szuka nagłówków i fraz. Diagnostyka „czemu słownik nie zadziałał" |
 | `SPLITTER_LOG_PAGE_TEXT_RAW_CHARS` | `1200` | Limit znaków surowego fragmentu w logu |
 | `SPLITTER_LOG_PAGE_TEXT_NORM_CHARS` | `300` | Limit znaków znormalizowanego fragmentu w logu |
-| `SPLITTER_WORK_DIR` | `/app/work` | Katalog roboczy serwisu: pliki oczekujących zadań (kasowane po przetworzeniu) i pliki tymczasowe. **Wyłącznie serwisu** — przy starcie kontenera zamiatany w całości (pozostałości po poprzednim wcieleniu) |
+| `SPLITTER_WORK_DIR` | `/app/work` | Katalog roboczy serwisu: pliki oczekujących zadań (kasowane po przetworzeniu — także gdy zadanie skończy się błędem) oraz katalogi tymczasowe na pliki wynikowe, sprzątane po odczytaniu do base64. **Wyłącznie serwisu** — przy starcie kontenera zamiatany w całości (pozostałości po poprzednim wcieleniu) |
 | `SPLITTER_WORKER_COUNT` | `1` | Ile paczek przetwarzanych jednocześnie. `1` = gwarancja „po kolei" |
 | `SPLITTER_MAX_QUEUE_SIZE` | `50` | Ile zadań może **czekać** w kolejce; powyżej → `503` + `Retry-After`. Limit chroni dysk (każde zadanie trzyma swój PDF w `SPLITTER_WORK_DIR`); głębsza kolejka nie przyspiesza przetwarzania |
 | `SPLITTER_JOB_RESULT_TTL_SECONDS` | `3600` | Jak długo gotowy wynik czeka na odbiór. Musi być znacznie dłuższy niż interwał odpytywania (przy takcie minutowym daje 60 szans) |

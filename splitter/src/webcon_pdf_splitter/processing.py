@@ -2,6 +2,7 @@ import base64
 import logging
 import re
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from pydantic import TypeAdapter, ValidationError
 
@@ -163,8 +164,17 @@ def process(
     _log_page_texts(page_texts, settings)
     result = pipeline.split_pages(filename, page_texts, blank_pages=blank_pages)
 
-    output_paths = split_pdf(source, source.parent / "output", result.documents)
-    for document, output_path in zip(result.documents, output_paths):
-        document.fileContentBase64 = base64.b64encode(output_path.read_bytes()).decode("ascii")
+    # Pliki wynikowe sa natychmiast wczytywane do base64, wiec nie musza
+    # przezyc tej funkcji: katalog tymczasowy sprzata sie sam. Wspolny
+    # katalog "output" bylby podwojnie zly - nikt by go nie kasowal (rosnie
+    # az do restartu kontenera), a przy kilku workerach dokumenty tego
+    # samego typu i zakresu stron z ROZNYCH paczek nadpisywalyby sie
+    # nawzajem (nazwa nie zawiera jobId).
+    with TemporaryDirectory(dir=str(source.parent)) as output_dir:
+        output_paths = split_pdf(source, Path(output_dir), result.documents)
+        for document, output_path in zip(result.documents, output_paths):
+            document.fileContentBase64 = base64.b64encode(
+                output_path.read_bytes()
+            ).decode("ascii")
 
     return result

@@ -17,6 +17,23 @@ class QueueFullError(Exception):
     """Kolejka osiagnela SPLITTER_MAX_QUEUE_SIZE - warstwa HTTP odda 503."""
 
 
+def _unlink_quietly(path: str) -> None:
+    """Kasuje plik, nigdy nie rzucajac.
+
+    missing_ok tlumi tylko FileNotFoundError; kazdy inny OSError (plik
+    zablokowany, brak praw) nie moze przerwac petli workera ani zapytania
+    HTTP - sprzatanie jest skutkiem ubocznym, nie celem operacji.
+    """
+    try:
+        Path(path).unlink(missing_ok=True)
+    except Exception:
+        logger.warning(
+            "Nie udalo sie usunac pliku zrodlowego %s - praca trwa dalej",
+            path,
+            exc_info=True,
+        )
+
+
 @dataclass
 class Job:
     job_id: str
@@ -64,6 +81,7 @@ class JobStore:
         bez tego paczka podzielilaby sie dwukrotnie.
         """
         with self._lock:
+            self._purge_expired_locked()
             if element_id is not None:
                 for existing in self._jobs.values():
                     if existing.element_id == element_id and existing.status in ACTIVE_STATUSES:
@@ -94,17 +112,33 @@ class JobStore:
         with self._lock:
             return self._jobs.get(job_id)
 
+    def _expired_locked(self, job: Job) -> bool:
+        return job.finished_at is not None and (
+            time.time() - job.finished_at > self._result_ttl_seconds
+        )
+
+    def _purge_expired_locked(self) -> None:
+        """Kasuje wszystkie wygasle zadania, nie tylko to odpytywane.
+
+        Bez tego pamiec wraca wylacznie dla zadan, o ktore ktos jeszcze
+        zapyta - a WEBCON przestaje pytac o zadanie zakonczone bledem albo
+        o element wypchniety na blad przez dozorce. Wyniki (base64 calych
+        paczek) zostawaly wtedy w RAM az do restartu kontenera.
+        """
+        expired = [
+            job_id for job_id, job in self._jobs.items() if self._expired_locked(job)
+        ]
+        for job_id in expired:
+            job = self._jobs.pop(job_id, None)
+            if job is not None:
+                _unlink_quietly(job.source_path)
+        if expired:
+            logger.info("Usunieto %s wygaslych zadan", len(expired))
+
     def get(self, job_id: str) -> Job | None:
         with self._lock:
-            job = self._jobs.get(job_id)
-            if job is None:
-                return None
-            if job.finished_at is not None and (
-                time.time() - job.finished_at > self._result_ttl_seconds
-            ):
-                self._jobs.pop(job_id, None)
-                return None
-            return job
+            self._purge_expired_locked()
+            return self._jobs.get(job_id)
 
     def position(self, job_id: str) -> int:
         """Miejsce w kolejce liczone od 1; 0 dla zadania juz zdjetego."""
@@ -148,7 +182,7 @@ class JobStore:
             job = self._jobs.pop(job_id, None)
         if job is None:
             return False
-        Path(job.source_path).unlink(missing_ok=True)
+        _unlink_quietly(job.source_path)
         return True
 
 
@@ -187,11 +221,4 @@ class JobWorker(threading.Thread):
         else:
             self._store.mark_done(job.job_id, result)
         finally:
-            try:
-                Path(job.source_path).unlink(missing_ok=True)
-            except Exception:
-                logger.warning(
-                    "Nie udalo sie usunac pliku zrodlowego %s - watek pracuje dalej",
-                    job.source_path,
-                    exc_info=True,
-                )
+            _unlink_quietly(job.source_path)

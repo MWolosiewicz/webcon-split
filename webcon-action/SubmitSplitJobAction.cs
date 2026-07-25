@@ -20,6 +20,19 @@ public class SubmitSplitJobAction : CustomAction<SubmitSplitJobActionConfig>
         var pluginVersion = typeof(SubmitSplitJobAction).Assembly.GetName().Version?.ToString() ?? "?";
         try
         {
+            // Zerowanie liczy sie TYLKO tutaj - to wejscie paczki w obieg
+            // przetwarzania. Ponowienie zlecane przez akcje cykliczna musi
+            // zachowac oba liczniki, dlatego nie ma tego we wspoldzielonym
+            // SplitJobSubmitter.
+            //
+            // Bez tego operator cofajacy paczke z kroku Blad (albo puszczajacy
+            // ja ponownie po Podzielonej) dostawalby ciche pominiecie
+            // dokumentow: warunek documentIndex <= lastCreated przeskakiwalby
+            // wszystkie dokumenty utworzone w poprzednim podejsciu, a paczka
+            // konczylaby "pomyslnie" z zerem elementow potomnych.
+            await SplitJobSubmitter.SetFieldAsync(args, Configuration.AttemptsFieldId, 0);
+            await SplitJobSubmitter.SetFieldAsync(args, Configuration.LastCreatedIndexFieldId, 0);
+
             var message = await SplitJobSubmitter.SubmitAsync(
                 args, Configuration, Configuration.PatternsDataSourceId);
             args.LogMessage = $"SubmitSplitJobAction v{pluginVersion}. {message}";

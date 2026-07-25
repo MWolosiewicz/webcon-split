@@ -52,8 +52,17 @@ public sealed class SplitterClient
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException($"Splitter returned {(int)response.StatusCode}: {body}");
 
-        return JsonConvert.DeserializeObject<SubmitJobResponse>(body)
+        var submitted = JsonConvert.DeserializeObject<SubmitJobResponse>(body)
             ?? throw new InvalidOperationException("Splitter returned empty response.");
+        // Stary (synchroniczny) kontener oddaje 200 z pelnym SplitResult,
+        // ktory deserializuje sie tutaj BEZ bledu - z pustym JobId. Bez tej
+        // kontroli element krazylby w nieskonczonosc: kazdy takt widzialby
+        // brak jobId i zlecal podzial od nowa, nie zglaszajac zadnego bledu.
+        if (string.IsNullOrWhiteSpace(submitted.JobId))
+            throw new InvalidOperationException(
+                "Splitter nie zwrocil jobId - prawdopodobnie stara (synchroniczna) wersja " +
+                "serwisu. Kontener i paczka pluginu musza byc wdrozone razem.");
+        return submitted;
     }
 
     public Task<JobStatusResponse?> GetJobStatusAsync(string jobId)
@@ -73,6 +82,11 @@ public sealed class SplitterClient
         // wolajacy zleca ponownie, bo zrodlem prawdy jest zalacznik w WEBCONie
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             return null;
+        // 503 znaczy to samo co przy zlecaniu (serwis zajety albo proxy
+        // w trakcie restartu) - to nie awaria elementu, tylko powod do
+        // ponowienia przy kolejnym takcie
+        if ((int)response.StatusCode == 503)
+            throw new SplitterBusyException($"Splitter chwilowo niedostepny: {body}");
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException($"Splitter returned {(int)response.StatusCode}: {body}");
 

@@ -46,7 +46,9 @@ def test_zlecenie_zwraca_202_z_identyfikatorem(client):
     assert response.status_code == 202
     body = response.json()
     assert body["jobId"]
-    assert body["position"] >= 0
+    # pierwsze zlecenie jest albo w kolejce na pozycji 1, albo juz zdjete
+    # przez workera (pozycja 0) - kazda inna wartosc to blad liczenia
+    assert body["position"] in (0, 1)
 
 
 def test_status_nie_zawiera_base64(client):
@@ -209,6 +211,69 @@ def test_uszkodzony_pdf_konczy_zadanie_statusem_failed(client):
     )
     body = client.get(f"/api/jobs/{job_id}").json()
     assert body["error"]
+
+
+def test_work_dir_pusty_po_pelnym_cyklu_zadania(tmp_path, monkeypatch):
+    # REGRESJA: pliki wynikowe podzialu ladowaly we wspolnym work_dir/output,
+    # ktorego nikt nie kasowal - katalog rosl az do restartu kontenera
+    from webcon_pdf_splitter.config import SplitterSettings
+
+    work_dir = tmp_path / "work"
+    monkeypatch.setattr(
+        api,
+        "get_settings",
+        lambda: SplitterSettings(_env_file=None, work_dir=str(work_dir)),
+    )
+
+    with TestClient(api.app) as client:
+        job_id = _submit(client).json()["jobId"]
+        assert _wait_for(
+            lambda: client.get(f"/api/jobs/{job_id}").json()["status"] == "done"
+        )
+        assert client.delete(f"/api/jobs/{job_id}").status_code == 204
+
+        leftovers = sorted(str(p.relative_to(work_dir)) for p in work_dir.rglob("*"))
+        assert leftovers == [], f"work_dir nie zostal posprzatany: {leftovers}"
+
+
+def test_dwa_workery_nie_mieszaja_wynikow_paczek(tmp_path, monkeypatch):
+    # REGRESJA: nazwa pliku wynikowego to {typ}_strony_{od}-{do}.pdf, bez
+    # jobId. We wspolnym katalogu dwa zadania z dokumentem tego samego typu
+    # i zakresu nadpisywaly sie nawzajem - do jednej paczki mogl trafic PDF
+    # z cudzej paczki
+    import base64
+
+    from pypdf import PdfReader
+
+    from webcon_pdf_splitter.config import SplitterSettings
+
+    monkeypatch.setattr(
+        api,
+        "get_settings",
+        lambda: SplitterSettings(
+            _env_file=None, work_dir=str(tmp_path / "work"), worker_count=2
+        ),
+    )
+
+    with TestClient(api.app) as client:
+        # rozna liczba stron = rozpoznawalny odcisk kazdej paczki
+        jobs = {}
+        for pages in (2, 5):
+            response = client.post(
+                "/api/split",
+                files={"file": (f"p{pages}.pdf", _pdf_bytes(pages), "application/pdf")},
+            )
+            jobs[pages] = response.json()["jobId"]
+
+        for pages, job_id in jobs.items():
+            assert _wait_for(
+                lambda jid=job_id: client.get(f"/api/jobs/{jid}").json()["status"]
+                == "done"
+            )
+            result = client.get(f"/api/jobs/{job_id}/result").json()
+            assert result["pageCount"] == pages
+            content = base64.b64decode(result["documents"][0]["fileContentBase64"])
+            assert len(PdfReader(io.BytesIO(content)).pages) == pages
 
 
 def test_zamiatanie_work_dir_przy_starcie(tmp_path, monkeypatch):

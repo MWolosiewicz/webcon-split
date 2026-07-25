@@ -90,6 +90,23 @@ def test_wynik_wygasa_po_ttl():
     assert store.get(job.job_id) is None
 
 
+def test_wygasle_zadanie_znika_bez_odpytywania_o_nie():
+    # REGRESJA: wygasanie dzialalo leniwie, tylko dla pytanego job_id -
+    # zadanie zakonczone bledem (o ktore WEBCON juz nie pyta) zostawalo
+    # w pamieci z pelnym wynikiem base64 az do restartu kontenera
+    store = JobStore(result_ttl_seconds=0)
+    porzucone, _ = _submit(store, "porzucone.pdf")
+    store.mark_running(porzucone.job_id)
+    store.mark_failed(porzucone.job_id, "nieczytelny PDF")
+    time.sleep(0.01)
+
+    # zlecenie innej paczki musi posprzatac wygasle zadania
+    _submit(store, "nowe.pdf")
+
+    assert store.get(porzucone.job_id) is None
+    assert porzucone.job_id not in store._jobs
+
+
 def test_zadanie_w_toku_nie_wygasa():
     store = JobStore(result_ttl_seconds=0)
     job, _ = _submit(store)

@@ -16,7 +16,6 @@ def test_split_result_serializes_required_fields():
                 endPage=3,
                 outputFileName="Umowa_o_prace_strony_001-003.pdf",
                 signals=["header_match:UMOWA O PRACE"],
-                metadata={"employeeName": "Jan Kowalski"},
             )
         ],
         warnings=[],
@@ -27,6 +26,9 @@ def test_split_result_serializes_required_fields():
     assert payload["sourceFileName"] == "scan.pdf"
     assert payload["documents"][0]["startPage"] == 1
     assert payload["documents"][0]["requiresReview"] is False
+    # pole metadata bylo martwe (pipeline wpisywal tam zawsze {}) i zniknelo
+    # z kontraktu po obu stronach - tu pilnujemy, ze nie wrocilo
+    assert "metadata" not in payload["documents"][0]
 
 
 def test_detected_document_review_reasons_default_and_serialization():
