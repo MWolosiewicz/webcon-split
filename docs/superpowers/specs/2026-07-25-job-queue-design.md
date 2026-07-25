@@ -458,7 +458,19 @@ Trzy zalozenia o WEBCON, ktorych nie potwierdzono w dokumentacji:
    `Ostatni utworzony dokument` jest konieczne, czy tylko zapasowe.
 2. **Zachowanie przy wielu wezlach serwisu** - czy dwa wezly moga podjac ten sam
    element w tym samym takcie. Deduplikacja po `element_id` chroni przed
-   podwojnym zleceniem; przy odbiorze zabezpiecza wznawianie po `documentIndex`.
+   podwojnym **zleceniem**.
+
+   **Korekta po przegladzie galezi:** wczesniejsze zdanie tego specu mowilo, ze
+   przy odbiorze zabezpiecza wznawianie po `documentIndex`. **To nieprawda.**
+   `lastCreated` jest czytany raz, na poczatku taktu; dwa wezly wykonujace akcje
+   cykliczna rownoczesnie oba odczytaja te sama wartosc i oba utworza komplet
+   dokumentow potomnych - beda duplikaty. Znacznik chroni ponowienia
+   **sekwencyjne** (pad w polowie petli), nie **rownoczesne** wykonania.
+
+   Dopoki nie potwierdzimy, ze WEBCON serializuje akcje cykliczne per element,
+   to jest realne ryzyko przy farmie serwisow. Wyjscie, gdyby sie nie
+   potwierdzilo: zaczynac takt od "zajecia" elementu (zapis znacznika przed
+   pobraniem wyniku), co daje blokade na poziomie elementu.
 3. **Limit czasu wykonania akcji** - istotny dla akcji zlecajacej, ktora
    przesyla duzy plik. Jesli limit okaze sie niski, transfer duzych paczek
    moze wymagac osobnego podejscia.
