@@ -8,6 +8,7 @@ from pypdf import PdfReader, PdfWriter
 from webcon_pdf_splitter import api
 from webcon_pdf_splitter.api import app
 from webcon_pdf_splitter.config import SplitterSettings
+from webcon_pdf_splitter.processing import build_blank_detector
 
 
 def _pdf_bytes(page_count: int) -> bytes:
@@ -94,7 +95,7 @@ def test_blank_detector_built_from_settings(monkeypatch):
         ),
     )
 
-    detector = api.build_blank_detector(api.get_settings())
+    detector = build_blank_detector(api.get_settings())
 
     assert detector._dpi == 72
     assert detector._max_ink_ratio == 0.01

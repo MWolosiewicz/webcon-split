@@ -1,6 +1,6 @@
 import logging
 
-from webcon_pdf_splitter.api import _log_page_texts, _preview
+from webcon_pdf_splitter.processing import _log_page_texts, _preview
 from webcon_pdf_splitter.config import SplitterSettings
 
 
@@ -15,7 +15,7 @@ def test_preview_collapses_whitespace_and_truncates_with_ellipsis():
 
 
 def test_logs_raw_and_normalized_fragment_per_page(caplog):
-    caplog.set_level(logging.INFO, logger="webcon_pdf_splitter.api")
+    caplog.set_level(logging.INFO, logger="webcon_pdf_splitter.processing")
 
     _log_page_texts(["Umowa o pracĘ\nzawarta dnia"], _settings())
 
@@ -27,7 +27,7 @@ def test_logs_raw_and_normalized_fragment_per_page(caplog):
 
 
 def test_respects_configured_char_limits(caplog):
-    caplog.set_level(logging.INFO, logger="webcon_pdf_splitter.api")
+    caplog.set_level(logging.INFO, logger="webcon_pdf_splitter.processing")
 
     _log_page_texts(
         ["Umowa o prace zawarta dnia"],
@@ -40,7 +40,7 @@ def test_respects_configured_char_limits(caplog):
 
 
 def test_empty_page_logged_as_pusta(caplog):
-    caplog.set_level(logging.INFO, logger="webcon_pdf_splitter.api")
+    caplog.set_level(logging.INFO, logger="webcon_pdf_splitter.processing")
 
     _log_page_texts(["Tekst pierwszej strony", "  \n. ,"], _settings())
 
@@ -50,7 +50,7 @@ def test_empty_page_logged_as_pusta(caplog):
 
 
 def test_disabled_flag_silences_logging(caplog):
-    caplog.set_level(logging.INFO, logger="webcon_pdf_splitter.api")
+    caplog.set_level(logging.INFO, logger="webcon_pdf_splitter.processing")
 
     _log_page_texts(["Umowa o prace"], _settings(log_page_text=False))
 

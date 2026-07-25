@@ -1,4 +1,4 @@
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -31,7 +31,6 @@ class DetectedDocument(BaseModel):
     fileContentBase64: str | None = None
     signals: list[str] = Field(default_factory=list)
     removedPages: list[int] = Field(default_factory=list)
-    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class SplitResult(BaseModel):

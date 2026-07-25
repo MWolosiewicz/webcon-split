@@ -241,7 +241,6 @@ class ClassificationPipeline:
                     ),
                     signals=segment.signals,
                     removedPages=segment_removed,
-                    metadata={},
                 )
             )
         warnings: list[str] = []

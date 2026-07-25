@@ -1,4 +1,4 @@
-from webcon_pdf_splitter.api import build_llm_classifier
+from webcon_pdf_splitter.processing import build_llm_classifier
 from webcon_pdf_splitter.classification.llm import (
     DisabledLlmClassifier,
     OpenAiCompatibleLlmClassifier,
