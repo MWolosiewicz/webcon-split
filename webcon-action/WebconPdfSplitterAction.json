@@ -17,6 +17,14 @@
       "type": "CustomAction"
     },
     {
+      "guid": "13203862-803a-4320-80c8-39bd9f25fa44",
+      "name": "CollectSplitJobAction",
+      "description": "Akcja cykliczna: odpytuje splitter o status zadania podzialu i po jego zakonczeniu tworzy elementy potomne.",
+      "assembly": "WebconPdfSplitterAction",
+      "class": "WebconPdfSplitterAction.CollectSplitJobAction",
+      "type": "CustomAction"
+    },
+    {
       "guid": "b3158154-3836-42a7-abe1-13712729486d",
       "name": "RemovePagesAction",
       "description": "Usuwa wskazany zakres stron z zalacznika PDF (jednego w dozwolonych kategoriach); podmienia w miejscu lub tworzy nowy zalacznik.",
