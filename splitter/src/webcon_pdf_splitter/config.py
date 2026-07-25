@@ -1,5 +1,30 @@
+import logging
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
+
+EMPTY_PAGE_MODES = ("keep", "report", "remove")
+
+
+def normalize_empty_page_mode(value: str) -> str:
+    """Nieznana wartosc trybu -> 'keep' (bezpieczny stan) + ostrzezenie.
+
+    Swiadome odstepstwo od fail-fast: dla parametru decydujacego o USUWANIU
+    stron lepszy jest bezpieczny stan niz zatrzymany serwis. Parametry
+    liczbowe zostaja fail-fast (walidacja pydantic).
+    """
+    mode = (value or "").strip().lower()
+    if mode in EMPTY_PAGE_MODES:
+        return mode
+    logger.warning(
+        "Nieznany tryb SPLITTER_EMPTY_PAGE_MODE='%s' - uzywam 'keep' "
+        "(nic nie bedzie usuwane). Dozwolone: %s",
+        value,
+        ", ".join(EMPTY_PAGE_MODES),
+    )
+    return "keep"
 
 
 class SplitterSettings(BaseSettings):
@@ -27,5 +52,9 @@ class SplitterSettings(BaseSettings):
     ocr_dpi: int = Field(default=300)
     ocr_timeout_seconds: int = Field(default=30)
     ocr_workers: int = Field(default=2)
-    drop_empty_pages: bool = Field(default=True)
+    empty_page_mode: str = Field(default="keep")
     empty_page_max_alnum: int = Field(default=0)
+    empty_page_max_share: float = Field(default=0.5)
+    blank_detect_dpi: int = Field(default=60)
+    blank_max_ink_ratio: float = Field(default=0.002)
+    blank_margin_ratio: float = Field(default=0.04)

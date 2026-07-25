@@ -64,20 +64,37 @@ def test_split_accepts_valid_token(monkeypatch):
     assert response.status_code == 200
 
 
-def test_split_all_empty_bundle_flags_for_review():
+def test_default_configuration_removes_nothing():
+    # REGRESJA INCYDENTU: domyslna konfiguracja (tryb keep) nie moze usunac
+    # zadnej strony, nawet gdy caly PDF to biale kartki
     client = TestClient(app)
 
     response = client.post(
         "/api/split",
-        files={"file": ("scan.pdf", io.BytesIO(_pdf_bytes(2)), "application/pdf")},
+        files={"file": ("scan.pdf", io.BytesIO(_pdf_bytes(3)), "application/pdf")},
     )
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["pageCount"] == 2
-    assert payload["status"] == "requires_review"
-    assert len(payload["documents"]) == 1
-    assert payload["documents"][0]["documentType"] == "Nieznany typ dokumentu"
-    # pole removedPages serializuje sie w odpowiedzi (tu puste - zabezpieczenie nic nie usuwa)
-    assert payload["documents"][0]["removedPages"] == []
-    assert any("sprawdz OCR" in warning for warning in payload["warnings"])
+    assert payload["pageCount"] == 3
+    assert all(document["removedPages"] == [] for document in payload["documents"])
+    covered = sum(
+        document["endPage"] - document["startPage"] + 1
+        for document in payload["documents"]
+    )
+    assert covered == 3
+
+
+def test_blank_detector_built_from_settings(monkeypatch):
+    monkeypatch.setattr(
+        api,
+        "get_settings",
+        lambda: SplitterSettings(
+            _env_file=None, blank_detect_dpi=72, blank_max_ink_ratio=0.01
+        ),
+    )
+
+    detector = api.build_blank_detector(api.get_settings())
+
+    assert detector._dpi == 72
+    assert detector._max_ink_ratio == 0.01

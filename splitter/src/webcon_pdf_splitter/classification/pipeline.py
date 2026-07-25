@@ -38,22 +38,64 @@ class ClassificationPipeline:
         llm_classifier: LlmClassifier,
         min_auto_accept_confidence: float,
         min_review_confidence: float,
-        drop_empty_pages: bool = True,
+        empty_page_mode: str = "keep",
         empty_page_max_alnum: int = 0,
+        empty_page_max_share: float = 0.5,
     ) -> None:
         self._rule_classifier = rule_classifier
         self._llm_classifier = llm_classifier
         self._min_auto_accept_confidence = min_auto_accept_confidence
         self._min_review_confidence = min_review_confidence
-        self._drop_empty_pages = drop_empty_pages
+        self._empty_page_mode = empty_page_mode
         self._empty_page_max_alnum = empty_page_max_alnum
+        self._empty_page_max_share = empty_page_max_share
 
-    def split_pages(self, source_file_name: str, page_texts: list[str]) -> SplitResult:
+    def _confirmed_empty_pages(
+        self, page_texts: list[str], blank_pages: set[int]
+    ) -> list[int]:
+        """Numery stron (1-based) pustych wedlug OBU kryteriow naraz.
+
+        Koniunkcja jest istota poprawki: sam brak tekstu oznacza rownie
+        dobrze biala kartke, co strone, ktorej OCR nie odczytal.
+        """
+        return [
+            index + 1
+            for index, text in enumerate(page_texts)
+            if index in blank_pages
+            and alnum_count(text) <= self._empty_page_max_alnum
+        ]
+
+    def split_pages(
+        self,
+        source_file_name: str,
+        page_texts: list[str],
+        blank_pages: set[int] | None = None,
+    ) -> SplitResult:
         known_types = self._rule_classifier.known_document_types
         segments: list[_Segment] = []
         current: _Segment | None = None
         removed_pages: list[int] = []
-        all_empty_fallback = False
+
+        # Zbior do usuniecia wyznaczamy PRZED petla segmentacji: bezpiecznik
+        # musi znac pelna liste, zanim cokolwiek zostanie pominiete.
+        candidates = self._confirmed_empty_pages(page_texts, set(blank_pages or ()))
+        removable: set[int] = set()
+        breaker_tripped = False
+        if self._empty_page_mode == "remove" and candidates:
+            share = len(candidates) / len(page_texts) if page_texts else 0.0
+            # `>=` na liczbie stron: nigdy nie usuwamy calej paczki, nawet
+            # gdy operator ustawil max_share na 1.0
+            if share > self._empty_page_max_share or len(candidates) >= len(page_texts):
+                breaker_tripped = True
+                logger.warning(
+                    "Bezpiecznik: %s z %s stron (%.0f%%) uznano za puste - "
+                    "nie usuwam nic, sprawdz OCR/render",
+                    len(candidates),
+                    len(page_texts),
+                    share * 100,
+                )
+            else:
+                removable = set(candidates)
 
         for index, text in enumerate(page_texts):
             page_number = index + 1
@@ -87,15 +129,14 @@ class ClassificationPipeline:
                 )
                 continue
 
-            page_is_empty = alnum_count(text) <= self._empty_page_max_alnum
-            if page_is_empty and self._drop_empty_pages:
+            if page_number in removable:
                 removed_pages.append(page_number)
                 logger.info(
-                    "Strona %s: pusta (%s znakow alnum) - usunieta",
-                    page_number,
-                    alnum_count(text),
+                    "Strona %s: pusta (potwierdzona obrazem) - usunieta", page_number
                 )
                 continue
+
+            page_is_empty = alnum_count(text) <= self._empty_page_max_alnum
             llm = (
                 None
                 if page_is_empty
@@ -177,26 +218,6 @@ class ClassificationPipeline:
                     self._unmatched_details(unmatched),
                 )
 
-        if not segments and removed_pages:
-            # ZABEZPIECZENIE: cala paczka pusta (np. awaria OCR) - nie gub jej po cichu
-            logger.warning(
-                "Wszystkie %s stron rozpoznane jako puste - mozliwa awaria OCR; "
-                "paczka trafia do weryfikacji jako nieznana",
-                len(page_texts),
-            )
-            segments.append(
-                _Segment(
-                    document_type=UNKNOWN_DOCUMENT_TYPE,
-                    confidence=0.20,
-                    signals=["all_empty_fallback"],
-                    start_page=1,
-                    end_page=len(page_texts),
-                    known=False,
-                )
-            )
-            removed_pages = []
-            all_empty_fallback = True
-
         documents: list[DetectedDocument] = []
         for document_index, segment in enumerate(segments, start=1):
             requires_review = (
@@ -244,8 +265,20 @@ class ClassificationPipeline:
                     len(page_texts),
                 )
             )
-        if all_empty_fallback:
-            warnings.append("Wszystkie strony rozpoznane jako puste - sprawdz OCR")
+        if self._empty_page_mode == "report" and candidates:
+            warnings.append(
+                "Tryb report: %s stron wyglada na puste (nie usunieto): %s (z %s)"
+                % (
+                    len(candidates),
+                    ", ".join(str(page) for page in candidates),
+                    len(page_texts),
+                )
+            )
+        if breaker_tripped:
+            warnings.append(
+                "Bezpiecznik: %s z %s stron uznano za puste - nie usunieto nic, "
+                "sprawdz OCR/render" % (len(candidates), len(page_texts))
+            )
 
         status = "requires_review" if any(document.requiresReview for document in documents) else "completed"
         for document in documents:

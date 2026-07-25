@@ -69,6 +69,13 @@ class _StubOcr:
     def extract_page_texts(self, path):
         return self._texts
 
+    def read_pages(self, path):
+        from webcon_pdf_splitter.ocr import PageRead
+
+        # stub warstwy tekstowej: zadna strona nie jest oceniana jako
+        # wizualnie pusta (brak detektora)
+        return [PageRead(text=text) for text in self._texts]
+
 
 def _umowa_patterns_json() -> str:
     return json.dumps(

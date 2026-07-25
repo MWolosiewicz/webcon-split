@@ -22,7 +22,8 @@ from webcon_pdf_splitter.classification.pipeline import ClassificationPipeline
 from webcon_pdf_splitter.classification.prompts import PromptProvider
 from webcon_pdf_splitter.classification.rules import RuleBasedClassifier, normalize_text
 from webcon_pdf_splitter import metrics
-from webcon_pdf_splitter.config import SplitterSettings
+from webcon_pdf_splitter.blank_pages import BlankPageDetector
+from webcon_pdf_splitter.config import SplitterSettings, normalize_empty_page_mode
 from webcon_pdf_splitter.contracts import PageOpResult, PatternPayload, SplitResult
 from webcon_pdf_splitter.ocr import (
     PdfTextOcrEngine,
@@ -197,6 +198,14 @@ def build_llm_classifier(settings: SplitterSettings) -> LlmClassifier:
     return DisabledLlmClassifier()
 
 
+def build_blank_detector(settings: SplitterSettings) -> BlankPageDetector:
+    return BlankPageDetector(
+        dpi=settings.blank_detect_dpi,
+        max_ink_ratio=settings.blank_max_ink_ratio,
+        margin_ratio=settings.blank_margin_ratio,
+    )
+
+
 def build_ocr_engine(settings: SplitterSettings):
     if settings.ocr_enabled:
         return TextLayerWithOcrFallback(
@@ -207,7 +216,10 @@ def build_ocr_engine(settings: SplitterSettings):
                 workers=settings.ocr_workers,
             ),
             min_text_chars=settings.ocr_min_text_chars,
+            blank_detector=build_blank_detector(settings),
         )
+    # bez OCR nie ma renderu, wiec nie ma tez oceny obrazu - zadna strona
+    # nie zostanie uznana za pusta (patrz README)
     return PdfTextOcrEngine()
 
 
@@ -281,13 +293,21 @@ async def _split(
         repository = InMemoryPatternRepository(provided)
     else:
         repository = InMemoryPatternRepository(patterns=[])
+    mode = normalize_empty_page_mode(settings.empty_page_mode)
+    if mode != "keep" and not settings.ocr_enabled:
+        logger.warning(
+            "SPLITTER_EMPTY_PAGE_MODE=%s wymaga wlaczonego OCR "
+            "(SPLITTER_OCR_ENABLED=true) - bez niego nic nie bedzie usuwane",
+            mode,
+        )
     pipeline = ClassificationPipeline(
         rule_classifier=RuleBasedClassifier(repository.list_active_patterns()),
         llm_classifier=build_llm_classifier(settings),
         min_auto_accept_confidence=settings.min_auto_accept_confidence,
         min_review_confidence=settings.min_review_confidence,
-        drop_empty_pages=settings.drop_empty_pages,
+        empty_page_mode=mode,
         empty_page_max_alnum=settings.empty_page_max_alnum,
+        empty_page_max_share=settings.empty_page_max_share,
     )
     ocr = build_ocr_engine(settings)
 
@@ -299,9 +319,11 @@ async def _split(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        page_texts = ocr.extract_page_texts(str(source_path))
+        page_reads = ocr.read_pages(str(source_path))
+        page_texts = [read.text for read in page_reads]
+        blank_pages = {index for index, read in enumerate(page_reads) if read.blank}
         _log_page_texts(page_texts, settings)
-        result = pipeline.split_pages(filename, page_texts)
+        result = pipeline.split_pages(filename, page_texts, blank_pages=blank_pages)
 
         output_paths = split_pdf(source_path, Path(tmp) / "output", result.documents)
         for document, output_path in zip(result.documents, output_paths):

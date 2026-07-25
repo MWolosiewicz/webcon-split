@@ -46,7 +46,7 @@ def test_output_file_name_has_no_numeric_prefix():
     assert result.documents[0].outputFileName == "Umowa_o_prace_strony_001-001.pdf"
 
 
-def test_empty_page_dropped_by_default():
+def test_empty_page_skips_llm():
     stub = _StubLlm(
         responses={
             "": LlmClassification(
@@ -60,32 +60,19 @@ def test_empty_page_dropped_by_default():
         ["UMOWA O PRACE zawarta z pracodawca", "    \n  "],
     )
 
-    # pusta strona 2 nie trafia do LLM i jest usuwana (nie doklejana)
+    # pusta strona 2 nie trafia do LLM mimo skonfigurowanej odpowiedzi
     assert stub.calls == []
     assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
-        ("Umowa o prace", 1, 1),
+        ("Umowa o prace", 1, 2),
     ]
-    doc = result.documents[0]
-    assert doc.requiresReview is False
-    assert doc.removedPages == []
-    assert "glued_unknown_page:2" not in doc.signals
-    assert result.warnings == ["Usunieto 1 pustych stron: 2 (z 2)"]
 
 
-def test_leading_empty_pages_dropped():
-    result = _make_pipeline().split_pages(
-        "scan.pdf",
-        ["", "   ", "UMOWA O PRACE zawarta z pracodawca"],
-    )
-
-    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
-        ("Umowa o prace", 3, 3),
-    ]
-    assert result.documents[0].removedPages == []
-    assert result.warnings == ["Usunieto 2 pustych stron: 1, 2 (z 3)"]
-
-
-def _make_pipeline(llm_classifier=None, drop_empty_pages=True, empty_page_max_alnum=0):
+def _make_pipeline(
+    llm_classifier=None,
+    empty_page_mode="keep",
+    empty_page_max_alnum=0,
+    empty_page_max_share=0.5,
+):
     classifier = RuleBasedClassifier(
         patterns=[
             DocumentPattern(
@@ -101,8 +88,9 @@ def _make_pipeline(llm_classifier=None, drop_empty_pages=True, empty_page_max_al
         llm_classifier=llm_classifier or DisabledLlmClassifier(),
         min_auto_accept_confidence=0.90,
         min_review_confidence=0.70,
-        drop_empty_pages=drop_empty_pages,
+        empty_page_mode=empty_page_mode,
         empty_page_max_alnum=empty_page_max_alnum,
+        empty_page_max_share=empty_page_max_share,
     )
 
 
@@ -622,10 +610,27 @@ def test_review_reasons_include_inconsistency_note():
     ]
 
 
-def test_empty_page_inside_document_attributed_to_child():
+def test_keep_mode_glues_empty_page_with_review():
     result = _make_pipeline().split_pages(
         "scan.pdf",
-        ["UMOWA O PRACE zawarta z pracodawca", "    ", "wynagrodzenie zasadnicze wynosi"],
+        ["UMOWA O PRACE zawarta z pracodawca", "   "],
+        blank_pages={1},
+    )
+
+    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
+        ("Umowa o prace", 1, 2),
+    ]
+    doc = result.documents[0]
+    assert doc.requiresReview is True
+    assert doc.removedPages == []
+    assert "glued_unknown_page:2" in doc.signals
+
+
+def test_remove_mode_drops_confirmed_blank_page_inside_document():
+    result = _make_pipeline(empty_page_mode="remove").split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "   ", "wynagrodzenie zasadnicze wynosi"],
+        blank_pages={1},
     )
 
     assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
@@ -635,55 +640,13 @@ def test_empty_page_inside_document_attributed_to_child():
     assert result.warnings == ["Usunieto 1 pustych stron: 2 (z 3)"]
 
 
-def test_separator_empty_page_reported_only_at_bundle_level():
-    result = _make_pipeline().split_pages(
+def test_remove_mode_keeps_unreadable_page_that_has_ink():
+    # REGRESJA INCYDENTU 2026-07-24: skan dowodu osobistego - OCR nic nie
+    # odczytal (0 znakow), ale obraz ma atrament -> strona MUSI zostac
+    result = _make_pipeline(empty_page_mode="remove").split_pages(
         "scan.pdf",
-        ["UMOWA O PRACE zawarta z pracodawca", "   ", "SWIADECTWO PRACY okres zatrudnienia"],
-    )
-
-    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
-        ("Umowa o prace", 1, 1),
-        ("Swiadectwo pracy", 3, 3),
-    ]
-    assert result.documents[0].removedPages == []
-    assert result.documents[1].removedPages == []
-    assert result.warnings == ["Usunieto 1 pustych stron: 2 (z 3)"]
-
-
-def test_empty_page_glued_with_review_when_drop_disabled():
-    result = _make_pipeline(drop_empty_pages=False).split_pages(
-        "scan.pdf",
-        ["UMOWA O PRACE zawarta z pracodawca", "    \n  "],
-    )
-
-    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
-        ("Umowa o prace", 1, 2),
-    ]
-    doc = result.documents[0]
-    assert doc.requiresReview is True
-    assert "glued_unknown_page:2" in doc.signals
-    assert doc.reviewReasons == [
-        "strona 2 bez tekstu (rowniez po OCR) - dolaczona automatycznie"
-    ]
-    assert doc.removedPages == []
-
-
-def test_threshold_treats_ocr_noise_as_empty():
-    result = _make_pipeline(empty_page_max_alnum=3).split_pages(
-        "scan.pdf",
-        ["UMOWA O PRACE zawarta z pracodawca", "x y"],
-    )
-
-    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
-        ("Umowa o prace", 1, 1),
-    ]
-    assert result.warnings == ["Usunieto 1 pustych stron: 2 (z 2)"]
-
-
-def test_sparse_real_content_above_threshold_not_dropped():
-    result = _make_pipeline(empty_page_max_alnum=3).split_pages(
-        "scan.pdf",
-        ["UMOWA O PRACE zawarta z pracodawca", "Zalacznik nr 1"],
+        ["UMOWA O PRACE zawarta z pracodawca", "   "],
+        blank_pages=set(),
     )
 
     assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
@@ -693,15 +656,62 @@ def test_sparse_real_content_above_threshold_not_dropped():
     assert result.documents[0].requiresReview is True
 
 
-def test_all_empty_bundle_falls_back_to_unknown_document():
-    result = _make_pipeline().split_pages("scan.pdf", ["", "   ", "  \n "])
+def test_report_mode_reports_without_removing():
+    result = _make_pipeline(empty_page_mode="report").split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "   ", "wynagrodzenie zasadnicze wynosi"],
+        blank_pages={1},
+    )
 
-    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
-        ("Nieznany typ dokumentu", 1, 3),
-    ]
-    doc = result.documents[0]
-    assert doc.requiresReview is True
-    assert doc.removedPages == []
-    assert "all_empty_fallback" in doc.signals
-    assert "Wszystkie strony rozpoznane jako puste - sprawdz OCR" in result.warnings
+    assert result.documents[0].removedPages == []
+    assert result.documents[0].endPage == 3
+    assert (
+        "Tryb report: 1 stron wyglada na puste (nie usunieto): 2 (z 3)"
+        in result.warnings
+    )
+
+
+def test_circuit_breaker_blocks_mass_removal():
+    result = _make_pipeline(empty_page_mode="remove", empty_page_max_share=0.5).split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "  ", "  ", "  "],
+        blank_pages={1, 2, 3},
+    )
+
+    assert result.documents[0].removedPages == []
+    assert result.documents[0].endPage == 4
+    assert any("Bezpiecznik" in warning for warning in result.warnings)
+
+
+def test_never_removes_every_page_even_with_permissive_share():
+    result = _make_pipeline(empty_page_mode="remove", empty_page_max_share=1.0).split_pages(
+        "scan.pdf",
+        ["   ", "  "],
+        blank_pages={0, 1},
+    )
+
+    assert len(result.documents) == 1
+    assert result.documents[0].removedPages == []
     assert result.status == "requires_review"
+
+
+def test_text_above_threshold_is_never_removed_even_if_visually_blank():
+    result = _make_pipeline(empty_page_mode="remove").split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "Zalacznik nr 1"],
+        blank_pages={1},
+    )
+
+    assert result.documents[0].removedPages == []
+    assert result.documents[0].endPage == 2
+
+
+def test_unknown_mode_behaves_like_keep():
+    result = _make_pipeline(empty_page_mode="cokolwiek").split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "   "],
+        blank_pages={1},
+    )
+
+    assert result.documents[0].removedPages == []
+    assert result.documents[0].endPage == 2
