@@ -50,40 +50,55 @@ to migawki z poszczególnych dni, nie bieżąca dokumentacja.
 ## Architektura
 
 ```
-┌────────────────┐   akcja SDK    ┌──────────────────────┐
-│  WEBCON BPS    │ ─────────────► │  PDF Splitter        │
-│  2026.1        │  HTTP+token    │  (Python/FastAPI)    │
-│                │  PDF + wzorce  │  Docker lub uvicorn  │
-│  paczka skanu  │ ◄───────────── │  OCR + klasyfikacja  │
-│  → dokumenty HR│  JSON + PDF-y  │  + podział PDF       │
-└────────────────┘    (base64)    └──────────────────────┘
+┌────────────────┐  POST /api/split   ┌──────────────────────┐
+│  WEBCON BPS    │ ─────────────────► │  PDF Splitter        │
+│  2026.1        │  ◄── 202 {jobId} ─ │  (Python/FastAPI)    │
+│                │                    │  Docker lub uvicorn  │
+│  paczka skanu  │  GET /api/jobs/…   │                      │
+│  → dokumenty HR│ ─────────────────► │  kolejka FIFO        │
+│                │  ◄── status/wynik─ │  → OCR+klasyfikacja  │
+└────────────────┘    (base64)        └──────────────────────┘
 ```
+
+Serwis ma **wewnętrzną kolejkę zadań**: zlecenie wraca natychmiast (`202` +
+`jobId`), a paczki przetwarza kolejno wątek roboczy (domyślnie jeden —
+gwarancja „po kolei" przy kilku paczkach naraz). Żadna akcja WEBCON nie czeka
+na OCR — dzięki temu długie paczki nie powodują timeoutów HTTP ani nie trzymają
+transakcji WEBCON przez czas przetwarzania.
 
 Trzy elementy:
 
-- **Akcja `SplitPdfAction`** (plugin C#, BPS 2026 SDK, netstandard2.0) — pobiera
-  PDF z paczki, czyta wzorce ze słownika przez źródło danych, woła splitter,
-  tworzy elementy Dokument HR z wynikowymi plikami.
+- **Akcje `SubmitSplitJobAction` + `CollectSplitJobAction`** (plugin C#, BPS 2026
+  SDK, netstandard2.0) — pierwsza zleca podział (wysyła PDF + wzorce ze słownika,
+  zapisuje `jobId`), druga (cykliczna) odpytuje o status i po zakończeniu tworzy
+  elementy Dokument HR z wynikowymi plikami.
 - **Serwis splittera** (Python/FastAPI) — jedyny komponent z logiką OCR i
-  klasyfikacji; bezstanowe HTTP API.
+  klasyfikacji; kolejka i wyniki żyją w pamięci procesu (bez bazy), pliki
+  oczekujących zadań w `SPLITTER_WORK_DIR`.
 - **Słownik typów** (proces słownikowy WEBCON) — nagłówek = typ, lista pozycji
   = wzorce; źródło danych mapuje go na pola żądania.
 
 ## Przepływ end-to-end
 
 1. Na paczce skanu (jeden PDF jako załącznik) operator przechodzi ścieżką z akcją
-   `SplitPdfAction`.
+   `SubmitSplitJobAction` — paczka trafia do kroku „Przetwarzanie".
 2. Akcja czyta aktywne wzorce ze słownika (źródło danych) i wysyła je razem z PDF
-   w multipart `POST /api/split` (nagłówek `Authorization: Bearer` + `X-Webcon-Element-Id`).
-3. Splitter dla **każdej strony** ustala tekst: warstwa tekstowa PDF, a gdy jej
-   brak — OCR Tesseract (patrz [Zasady działania](#zasady-działania-splittera)).
+   w multipart `POST /api/split` (nagłówek `Authorization: Bearer` +
+   `X-Webcon-Element-Id`); odpowiedź `202` z `jobId` zapisuje w polu paczki.
+   Akcja trwa tyle, co transfer pliku — nie czeka na OCR.
+3. Splitter wkłada zadanie do kolejki; wątek roboczy dla **każdej strony** ustala
+   tekst: warstwa tekstowa PDF, a gdy jej brak — OCR Tesseract (patrz
+   [Zasady działania](#zasady-działania-splittera)).
 4. Na tym tekście działa klasyfikacja: dopasowanie wzorców, wyznaczenie granic
    dokumentów, ewentualny fallback LLM dla stron niedopasowanych.
-5. Splitter tnie oryginalny PDF na dokumenty i zwraca JSON: typ, zakres stron,
-   pewność, powody weryfikacji, plik wynikowy (base64) i `jobId` (uuid korelacyjny).
+5. Akcja cykliczna `CollectSplitJobAction` odpytuje `GET /api/jobs/{jobId}`
+   (lekki status: pozycja w kolejce, liczba dokumentów, ile do weryfikacji) i po
+   `done` pobiera pełny wynik z `GET /api/jobs/{jobId}/result`: typ, zakres
+   stron, pewność, powody weryfikacji, plik wynikowy (base64).
 6. Akcja tworzy element **Dokument HR** dla każdego wykrytego dokumentu (załącznik
-   + komentarz + relacja do paczki); `requiresReview` i powody może zapisać w
-   atrybutach elementu.
+   + komentarz + relacja do paczki), kasuje zadanie (`DELETE /api/jobs/{jobId}`)
+   i przechodzi paczką na krok końcowy; `requiresReview` i powody może zapisać
+   w atrybutach elementu.
 
 ## Zasady działania splittera
 
@@ -229,7 +244,10 @@ opcji) są ignorowane — nie wywracają startu. Szablon: [`splitter/.env.exampl
 | `SPLITTER_LOG_PAGE_TEXT` | `true` | Loguje per strona tekst odczytany z warstwy/OCR: fragment surowy + fragment znormalizowany (ASCII, wielkie litery) — dokładnie w postaci, w jakiej klasyfikator szuka nagłówków i fraz. Diagnostyka „czemu słownik nie zadziałał" |
 | `SPLITTER_LOG_PAGE_TEXT_RAW_CHARS` | `1200` | Limit znaków surowego fragmentu w logu |
 | `SPLITTER_LOG_PAGE_TEXT_NORM_CHARS` | `300` | Limit znaków znormalizowanego fragmentu w logu |
-| `SPLITTER_WORK_DIR` | `/app/work` | Katalog plików tymczasowych (czyszczony po zadaniu) |
+| `SPLITTER_WORK_DIR` | `/app/work` | Katalog roboczy serwisu: pliki oczekujących zadań (kasowane po przetworzeniu) i pliki tymczasowe. **Wyłącznie serwisu** — przy starcie kontenera zamiatany w całości (pozostałości po poprzednim wcieleniu) |
+| `SPLITTER_WORKER_COUNT` | `1` | Ile paczek przetwarzanych jednocześnie. `1` = gwarancja „po kolei" |
+| `SPLITTER_MAX_QUEUE_SIZE` | `50` | Ile zadań może **czekać** w kolejce; powyżej → `503` + `Retry-After`. Limit chroni dysk (każde zadanie trzyma swój PDF w `SPLITTER_WORK_DIR`); głębsza kolejka nie przyspiesza przetwarzania |
+| `SPLITTER_JOB_RESULT_TTL_SECONDS` | `3600` | Jak długo gotowy wynik czeka na odbiór. Musi być znacznie dłuższy niż interwał odpytywania (przy takcie minutowym daje 60 szans) |
 | `SPLITTER_MIN_AUTO_ACCEPT_CONFIDENCE` | `0.80` | Poniżej → dokument dostaje `requiresReview` (0.80 = sam dobry nagłówek z wagą 1,0 przechodzi) |
 | `SPLITTER_MIN_REVIEW_CONFIDENCE` | `0.70` | Minimalna pewność, przy której werdykt LLM jest brany pod uwagę |
 | `SPLITTER_LLM_ENABLED` | `false` | Włącza fallback LLM (wymaga endpointu i modelu) |
@@ -338,24 +356,35 @@ Dockerfile.
 
 | Endpoint | Opis |
 |---|---|
-| `GET /health` | Kontrola życia serwisu → `{"status":"ok"}` |
+| `GET /health` | Kontrola życia serwisu → `{"status":"ok"}`. Odpowiada także w trakcie przetwarzania paczki |
 | `GET /metrics` | Liczniki skumulowane od startu procesu (JSON, w pamięci): żądania, strony (w tym uzupełnione OCR), wywołania LLM, dokumenty, odsetek weryfikacji (`review_rate`), łączny czas przetwarzania. Token jak `/api/split` |
-| `POST /api/split` | multipart: `file` (PDF) + `patterns` (JSON, opcjonalne) → `SplitResult` |
-| `POST /api/pages/remove` | multipart: `file` (PDF) + `pages` (zakres) → `PageOpResult` bez tych stron |
-| `POST /api/pages/extract` | multipart: `file` (PDF) + `pages` (zakres) → `PageOpResult` tylko z tymi stronami |
-| `POST /api/merge` | multipart: wiele `files` (PDF) w kolejności + `output_file_name` → `PageOpResult` (sklejony) |
+| `POST /api/split` | multipart: `file` (PDF) + `patterns` (JSON, opcjonalne) → **`202`** `{jobId, position}` — zlecenie trafia do kolejki |
+| `GET /api/jobs/{jobId}` | Lekki status zadania (bez base64) — do odpytywania co takt akcji cyklicznej |
+| `GET /api/jobs/{jobId}/result` | Pełny `SplitResult` z plikami (base64) — po `status=done` |
+| `DELETE /api/jobs/{jobId}` | Kasuje zadanie i zwalnia pamięć — wołane po zapisaniu dokumentów w WEBCON |
+| `POST /api/pages/remove` | multipart: `file` (PDF) + `pages` (zakres) → `PageOpResult` bez tych stron (synchronicznie) |
+| `POST /api/pages/extract` | multipart: `file` (PDF) + `pages` (zakres) → `PageOpResult` tylko z tymi stronami (synchronicznie) |
+| `POST /api/merge` | multipart: wiele `files` (PDF) w kolejności + `output_file_name` → `PageOpResult` (sklejony, synchronicznie) |
 
 `/api/split` wymaga `Authorization: Bearer <SPLITTER_API_TOKEN>` (jeśli token
-skonfigurowany) i przyjmuje nagłówek `X-Webcon-Element-Id` (trafia do logów —
-korelacja z elementem paczki). Bez pola `patterns` serwis działa na pustej liście
-wzorców (wszystko → „Nieznany typ dokumentu").
+skonfigurowany) i przyjmuje nagłówek `X-Webcon-Element-Id` — służy do
+**deduplikacji**: jeśli element ma już aktywne zadanie (`queued`/`running`),
+powtórne zlecenie zwraca istniejący `jobId` zamiast tworzyć drugie (ochrona
+przed podwójnym podziałem po zgubionej odpowiedzi). Bez pola `patterns` serwis
+działa na pustej liście wzorców (wszystko → „Nieznany typ dokumentu").
 
 **Pole `patterns`** — lista obiektów: `documentType`, `header`, `phrases` (lista),
 `excludedPhrases` (lista), `weight` (domyślnie 1.0).
 
-**Odpowiedź `SplitResult`:** `sourceFileName`, `pageCount`, `status`
-(`completed`/`requires_review`/`failed`), `warnings` (lista), `jobId` (uuid),
-oraz `documents` — lista `DetectedDocument`:
+**Status zadania (`GET /api/jobs/{jobId}`):** `jobId`, `status`
+(`queued` → `running` → `done` | `failed`), `position` (miejsce w kolejce, od 1;
+0 = już zdjęte), `runningSeconds`, `pageCount`, `documentCount`,
+`documentsRequiringReview`, `warnings`, `error`. Celowo **bez base64** —
+odpytywanie co minutę nie może przeciągać całej paczki przez sieć.
+
+**Wynik (`GET /api/jobs/{jobId}/result`) — `SplitResult`:** `sourceFileName`,
+`pageCount`, `status` (`completed`/`requires_review`/`failed`), `warnings`
+(lista), `jobId` (uuid), oraz `documents` — lista `DetectedDocument`:
 
 | Pole | Znaczenie |
 |---|---|
@@ -367,10 +396,19 @@ oraz `documents` — lista `DetectedDocument`:
 | `startPage` / `endPage` | zakres stron w oryginale |
 | `outputFileName` | nazwa pliku wynikowego |
 | `fileContentBase64` | zawartość wynikowego PDF (base64) |
-| `signals` | ślad techniczny decyzji |
-| `metadata` | zarezerwowane |
+| `signals` | ślad techniczny decyzji klasyfikacji (`header_match:…`, `phrase_hits:…`, `llm:…`) — akcja dopisuje go do komentarza dokumentu |
 
-Błędy: `400` (PDF zaszyfrowany/uszkodzony, złe `patterns`, nie-PDF), `401` (zły token).
+Kody: `202` (przyjęte do kolejki), `400` (złe `patterns`, nie-PDF w nazwie —
+błędy konfiguracji wracają synchronicznie), `401` (zły token), `404` (nieznane
+zadanie — także po restarcie kontenera i po TTL; WEBCON zleca wtedy ponownie),
+`409` (wynik jeszcze niegotowy), `503` + `Retry-After` (kolejka pełna — ponowić
+później, to nie błąd). PDF zaszyfrowany/uszkodzony **nie** daje `400` — zadanie
+kończy się `status=failed` z treścią w polu `error`.
+
+**Trwałość:** kolejka i wyniki żyją w pamięci procesu, pliki oczekujących zadań
+w `SPLITTER_WORK_DIR`. Po restarcie kontenera zadania przepadają (a `work_dir`
+jest zamiatany przy starcie) — to świadome: źródłem prawdy jest załącznik
+w WEBCONie, akcja odbierająca dostaje `404` i zleca ponownie.
 
 ### Ręczne operacje na PDF (dla akcji operatora)
 
@@ -388,9 +426,9 @@ na stronach. Uwierzytelnianie i nagłówek `X-Webcon-Element-Id` jak w `/api/spl
 ## Integracja z WEBCON
 
 Środowisko docelowe: **WEBCON BPS 2026.1** (domyślnie) lub **BPS 2025 R2**
-(`package.ps1 -Sdk 2025`). Akcja: `WebconPdfSplitterAction.SplitPdfAction`
-(`CustomAction<SplitPdfActionConfig>`), zbudowana na `WEBCON.BPS.<linia>.SDK.Libraries`,
-podpisana strong name. Wymaga licencji SDK.
+(`package.ps1 -Sdk 2025`). Akcje podziału: `SubmitSplitJobAction` (zlecenie)
+i `CollectSplitJobAction` (odbiór, cykliczna), zbudowane na
+`WEBCON.BPS.<linia>.SDK.Libraries`, podpisane strong name. Wymagają licencji SDK.
 
 ### Rejestracja pluginu
 
@@ -399,23 +437,73 @@ podpisana strong name. Wymaga licencji SDK.
    np. `WebconPdfSplitterAction-2025r2-1.0.12.1.zip`
    (DLL pluginu + Newtonsoft.Json.dll + manifest; biblioteki SDK dostarcza host BPS).
    Skrypt sam podbija 4-częściową wersję (= wersja assembly); wersja jest też
-   w logu operacji (`SplitPdfAction vX.Y.Z.W`).
+   w logu operacji (`SubmitSplitJobAction vX.Y.Z.W`).
 2. Designer Studio → **Plugin packages** → **New package** → wskaż ZIP → **Verify plugins**.
 
-### Konfiguracja akcji „SplitPdfAction"
+### Obieg paczki: kroki i pola
+
+Kolejka żyje w splitterze, więc obieg paczki jest prosty — bez kroku-muteksu
+i liczenia elementów w krokach:
+
+```
+Rejestracja → Przetwarzanie → Podzielona
+                   │
+                   └─(limit prób / timeout dozorcy)→ Błąd
+```
+
+- **Rejestracja → Przetwarzanie**: na przejściu `SubmitSplitJobAction`. Element
+  przechodzi **zawsze** — nieudane zlecenie (kolejka pełna, serwis niedostępny)
+  nie jest błędem elementu; akcja odbierająca ponowi je przy kolejnym takcie.
+- **Przetwarzanie**: akcja cykliczna `CollectSplitJobAction` (zalecany interwał
+  ~1 min) + **akcja na timeout** (dozorca: po N minutach od daty zlecenia →
+  ścieżka na Błąd; N ≈ 3× spodziewany czas największej paczki).
+- **Podzielona / Błąd**: kroki końcowe (Błąd z opisem w polu statusu).
+
+Pola na formularzu paczki (ID podaje się w konfiguracji obu akcji):
+
+| Pole | Typ | Rola |
+|---|---|---|
+| Job ID | tekst | Klucz zadania; korelacja z logiem kontenera (`[job=…]`) |
+| Data zlecenia | data i czas | Podstawa dla akcji na timeout (dozorcy) |
+| Status przetwarzania | tekst | Dla operatora: „3. w kolejce" / „8 dok., 2 do weryfikacji" / treść błędu |
+| Liczba prób | liczba | Ochrona przed pętlą ponowień (rośnie tylko przy `404`/`failed`, **nie** przy zajętości) |
+| Ostatni utworzony dokument | liczba | Wznawianie odbioru po awarii bez duplikatów (`documentIndex`) |
+
+### Konfiguracja akcji „SubmitSplitJobAction" (przejście z Rejestracji)
 
 | Pole | Wymagane | Opis / skąd wziąć |
 |---|---|---|
 | Splitter base URL | tak | Adres serwisu, np. `http://serwer:8010`. Osiągalny **z serwera WEBCON** (WorkflowService), nie z przeglądarki |
 | Splitter API token | zalecane | Ta sama wartość co `SPLITTER_API_TOKEN` |
+| Timeout in seconds | nie (300) | Limit HTTP — po zmianie na kolejkę wystarcza na sam transfer pliku |
+| Patterns data source ID | tak | Źródło danych z aktywnymi wzorcami (kolumny niżej) |
+| Job ID field ID | tak | Pole tekstowe na `jobId` |
+| Submitted at field ID | tak | Pole daty i czasu z momentem zlecenia |
+| Status field ID | nie | Pole tekstowe na status dla operatora |
+| Attempts field ID | nie | Pole liczbowe z liczbą nieudanych prób |
+| Last created document index field ID | nie | Pole liczbowe do wznawiania odbioru |
+
+### Konfiguracja akcji „CollectSplitJobAction" (cykliczna na Przetwarzaniu)
+
+Wszystkie pola powyżej (wspólna konfiguracja połączenia i pól paczki), plus:
+
+| Pole | Wymagane | Opis |
+|---|---|---|
 | Target workflow ID | tak | Obieg, w którym powstają elementy Dokument HR |
 | Target document type ID | tak | Typ formularza elementów Dokument HR |
 | Start path ID | tak | Ścieżka startowa obiegu Dokument HR |
-| Patterns data source ID | tak | Źródło danych z aktywnymi wzorcami (kolumny niżej) |
-| Timeout in seconds | nie (300) | Zwiększ dla dużych paczek z OCR |
 | Requires review field ID | nie | Pole tak/nie na `requiresReview`; puste = pomijane |
-| Review reasons field ID | nie | Pole tekstowe (wieloliniowe) na powody. Ustawione → powody tylko do pola; puste → do komentarza elementu (bez duplikacji) |
-| Parent element ID field ID | nie | Pole (liczbowe lub tekstowe) na ID elementu nadrzędnego (paczki skanów); puste = pomijane. Relacja systemowa rodzic–dziecko jest ustawiana zawsze |
+| Review reasons field ID | nie | Pole tekstowe (wieloliniowe) na powody. Ustawione → powody tylko do pola; puste → do komentarza elementu |
+| Parent element ID field ID | nie | Pole na ID elementu nadrzędnego; relacja systemowa rodzic–dziecko jest ustawiana zawsze |
+| Max attempts | nie (3) | Po ilu **nieudanych** próbach (`404`/`failed`) element idzie na ścieżkę błędu. Zajętość (`503`) i brak połączenia się nie liczą |
+| Error path ID | tak | Ścieżka na krok Błąd |
+| Done path ID | tak | Ścieżka na krok Podzielona |
+
+Logika taktu `CollectSplitJobAction`: brak `jobId` → zleca (wspólna ścieżka dla
+`503`, błędu sieci, `404` i wygasłego wyniku); `queued`/`running` → aktualizuje
+pole statusu; `done` → pobiera wynik, tworzy dokumenty potomne (wznawiając od
+`documentIndex` > „Ostatni utworzony dokument"), kasuje zadanie, przechodzi na
+Podzieloną; `failed`/`404` → licznik prób, powyżej limitu ścieżka na Błąd.
 
 ID obiektów: Designer Studio → właściwości obiektu → ID (włącz „Pokaż identyfikatory
 obiektów", jeśli niewidoczne).
@@ -436,7 +524,7 @@ weryfikacji:
   (wiersz = załącznik po ID z kolumny picker, kolejność wierszy = kolejność
   sklejania) w jeden PDF dodawany do bieżącego elementu; źródła zostają.
 
-Wszystkie trzy dzielą konfigurację połączenia (URL/token/timeout) z `SplitPdfAction`.
+Wszystkie trzy dzielą konfigurację połączenia (URL/token/timeout) z akcjami podziału.
 Kategorie załączników podaje się nazwami lub ID grup, rozdzielone średnikami;
 akcje remove/extract wymagają **dokładnie jednego** PDF-a w tych kategoriach
 (0 lub >1 → czytelny błąd). Komunikaty walidacyjne serwisu (np. „Strona 8 poza
@@ -506,22 +594,47 @@ nieaktywne (wszystko → „Nieznany typ dokumentu"); HTTP 400 „Invalid patter
 ### Procesy i elementy
 
 - **Paczka skanu** — dokładnie jeden PDF jako załącznik (więcej niż jeden = błąd
-  o niejednoznacznym pliku), status przetwarzania, liczba stron/dokumentów. Akcję
-  podpina się na ścieżce przejścia na kroku z kompletem załączników.
+  o niejednoznacznym pliku), pola kolejki (Job ID, data zlecenia, status, liczba
+  prób, ostatni utworzony dokument — patrz
+  [Obieg paczki](#obieg-paczki-kroki-i-pola)). `SubmitSplitJobAction` podpina
+  się na ścieżce przejścia na kroku z kompletem załączników.
 - **Dokument HR** — element na każdy wykryty dokument: jeden PDF, komentarz
-  `Type: <typ>; pages <od>-<do>; confidence <0.00-1.00>; requires review: <t/f>`,
+  `Type: <typ>; pages <od>-<do>; confidence <0.00-1.00>; requires review: <t/f>`
+  (+ `sygnaly: …` — ślad decyzji klasyfikacji, np. `header_match:UMOWA O PRACE`),
   relacja do paczki (`ParentDocumentID`), opcjonalnie `requiresReview` i powody
   w polach formularza.
 
-Akcja rozróżnia i raportuje błędy (użytkownik: komunikat biznesowy; administrator:
-stack w logu): brak PDF, więcej niż jeden PDF, PDF zaszyfrowany/uszkodzony (400),
-zły token (401), niedostępność/timeout. Oryginalny PDF nigdy nie jest modyfikowany
-ani usuwany. `jobId` z odpowiedzi (uuid korelacyjny) trafia do logu operacji akcji.
+Akcje rozróżniają i raportują błędy (użytkownik: komunikat biznesowy;
+administrator: stack w logu): brak PDF, więcej niż jeden PDF, złe wzorce (400),
+zły token (401). **Zajętość serwisu (503) i brak połączenia nie są błędami
+elementu** — element czeka w Przetwarzaniu, a zlecenie ponawia się przy kolejnym
+takcie. PDF zaszyfrowany/uszkodzony kończy zadanie statusem `failed` (treść
+w polu statusu paczki). Oryginalny PDF nigdy nie jest modyfikowany ani usuwany.
+`jobId` trafia do pola paczki i do logu operacji obu akcji.
 
 ## Wdrożenie
 
 Topologia docelowa: kontener na **dedykowanym serwerze** (nie na serwerze WEBCON);
-serwer WEBCON łączy się po HTTP z tokenem. Serwis bezstanowy, bez bazy.
+serwer WEBCON łączy się po HTTP z tokenem. Serwis bez bazy — kolejka i wyniki
+w pamięci procesu, pliki oczekujących zadań w `SPLITTER_WORK_DIR`.
+
+### Migracja z wersji synchronicznej (≤ v1.0.12-sync)
+
+Wersje do taga **`v1.0.12-sync`** (paczki `2026r1-1.0.12.7` / `2025r2-1.0.12.8`)
+zwracały wynik wprost z `POST /api/split`, a akcja `SplitPdfAction` czekała na
+niego synchronicznie. To **zmiana łamiąca zgodność** — stary plugin nie działa
+z nowym kontenerem i odwrotnie:
+
+1. Wdróż nowy kontener i nową paczkę pluginu **razem** (okno serwisowe).
+2. Załóż kroki `Przetwarzanie`/`Błąd` i pola paczki
+   (patrz [Obieg paczki](#obieg-paczki-kroki-i-pola)).
+3. Przepnij akcje: `SubmitSplitJobAction` na przejście z Rejestracji,
+   `CollectSplitJobAction` jako cykliczna na Przetwarzaniu, akcja na timeout
+   jako dozorca.
+4. Elementy będące w locie w chwili wdrożenia przepchnij ręcznie — paczka
+   czekająca na odpowiedź starego API nie ma ścieżki migracji.
+
+Powrót: `git checkout v1.0.12-sync` + przebudowa kontenera i paczki pluginu.
 
 ### Docker (zalecane)
 
@@ -709,10 +822,12 @@ uruchamia się ręcznie przeciw lokalnemu modelowi (poza pytest) do strojenia pr
 
 | Plik | Odpowiedzialność |
 |---|---|
-| `api.py` | Warstwa HTTP (FastAPI): endpointy `/health`, `/api/split`, `/api/pages/remove`, `/api/pages/extract`, `/api/merge`; autoryzacja Bearer, parsowanie pola `patterns`, składanie zależności (silnik OCR, klasyfikatory, pipeline) z ustawień, dekodowanie nazw plików RFC 2047 z klienta .NET, konfiguracja logowania |
+| `api.py` | Warstwa HTTP (FastAPI): zlecanie `/api/split` (202), status/wynik/kasowanie `/api/jobs/*`, `/health`, `/metrics`, `/api/pages/*`, `/api/merge`; lifespan (start/stop workerów, zamiatanie `work_dir`), autoryzacja Bearer, wczesna walidacja `patterns`, dekodowanie nazw plików RFC 2047 z klienta .NET, `run_job` (wykonanie zadania z kontekstem logu i metryk), konfiguracja logowania |
+| `jobs.py` | Kolejka zadań: `Job`, `JobStore` (FIFO z limitem, deduplikacja po `element_id`, TTL wyników, `position`), `JobWorker` (wątek-demon; wyjątek zadania → `failed`, wątek żyje dalej) |
+| `processing.py` | Rdzeń przetwarzania `process()` (PDF na dysku → `SplitResult`) — synchroniczny, wolny od FastAPI; budowa silnika OCR/LLM/detektora z ustawień, parsowanie `patterns` |
 | `config.py` | `SplitterSettings` — wszystkie zmienne `SPLITTER_*` (pydantic-settings, czyta `.env`, nieznane wpisy ignoruje) |
-| `metrics.py` | Metryki: kolektor per żądanie (contextvar; OCR/LLM raportują przez `add_*`, poza żądaniem no-op) + rejestr skumulowany od startu procesu dla `GET /metrics` |
-| `contracts.py` | Modele Pydantic API: `PatternPayload` (wejście), `DetectedDocument`, `SplitResult`, `PageOpResult` (wyjście) |
+| `metrics.py` | Metryki: kolektor per zadanie (contextvar; OCR/LLM raportują przez `add_*`, poza zadaniem no-op) + rejestr skumulowany od startu procesu dla `GET /metrics` |
+| `contracts.py` | Modele Pydantic API: `PatternPayload` (wejście), `DetectedDocument`, `SplitResult`, `SubmitJobResponse`, `JobStatusResponse`, `PageOpResult` (wyjście) |
 | `patterns.py` | `DocumentPattern` (typ, nagłówek, frazy, frazy wykluczające, waga, aktywność) + `InMemoryPatternRepository` zwracające tylko aktywne wzorce |
 | `ocr.py` | Zdobycie tekstu stron: `PdfTextOcrEngine` (warstwa tekstowa), `TesseractPageOcr` (render pypdfium2 + pytesseract), kompozyt `TextLayerWithOcrFallback` (progi, „OCR nie niszczy danych", degradacja bez wywracania żądania), wspólny licznik `alnum_count` |
 | `pdf_io.py` | Czyste operacje na PDF (bez klasyfikacji): `split_pdf` (cięcie wg wykrytych dokumentów, oryginalne strony), `remove_pages` / `extract_pages` / `merge_pdfs` dla akcji ręcznych, `parse_page_range` (zakresy `2-4,7`), `validate_pdf` |
@@ -725,16 +840,20 @@ uruchamia się ręcznie przeciw lokalnemu modelowi (poza pytest) do strojenia pr
 
 | Plik | Zakres |
 |---|---|
-| `conftest.py` | Fixture izolujące ustawienia (env) między testami |
+| `conftest.py` | Fixture izolujące ustawienia (env, `work_dir` → tmp) między testami + wspólny helper `split_and_wait` (zlecenie → odpytanie → odbiór wyniku) |
 | `test_api.py` | Endpoint `/health` |
-| `test_api_split.py` | `/api/split` end-to-end: token (brak/zły/dobry), pliki wynikowe w base64, nazwy plików RFC 2047 z .NET |
-| `test_api_pages.py` | `/api/pages/remove` / `extract` / `merge`: poprawne operacje, złe zakresy, nie-PDF, token |
+| `test_api_split.py` | `/api/split` end-to-end (przez kolejkę): token (brak/zły/dobry), pliki wynikowe w base64 |
+| `test_api_jobs.py` | Endpointy zadań: 202+jobId, status bez base64, wynik, delete, 404/409/503+Retry-After, deduplikacja po elemencie, `failed` dla uszkodzonego PDF, `/health` w trakcie mielenia paczki, zamiatanie `work_dir` |
+| `test_job_store.py` | `JobStore`: FIFO, `position`, limit kolejki, deduplikacja aktywnych zadań, TTL wyników, delete |
+| `test_job_worker.py` | `JobWorker`: przejścia statusów, wyjątek zadania nie zabija wątku, sprzątanie pliku (także przy błędzie i przy nieusuwalnym pliku), stop |
+| `test_processing.py` | Rdzeń `process()` bez warstwy HTTP: podział, wzorce z JSON, brak pola `metadata` |
+| `test_api_pages.py` | `/api/pages/remove` / `extract` / `merge`: poprawne operacje, złe zakresy, nie-PDF, token, nazwy plików RFC 2047 z .NET |
 | `test_split_patterns.py` | Pole `patterns` żądania: mapowanie na `DocumentPattern`, wartości domyślne, odrzucanie złego JSON/schematu, podział bez wzorców (wszystko „Nieznany typ dokumentu") |
 | `test_config_logging.py` | Domyślne ustawienia (log level, OCR, logowanie tekstu stron), czytanie env, `configure_logging`, wybór silnika OCR wg `SPLITTER_OCR_ENABLED` |
 | `test_page_text_logging.py` | Diagnostyczny log tekstu stron: fragment surowy + znormalizowany, limity długości, strona pusta, wyłączenie flagą |
 | `test_contracts.py` | Serializacja modeli odpowiedzi |
 | `test_metrics.py` | Rejestr metryk (`review_rate`), kolektor per żądanie, zliczanie stron OCR i wywołań LLM, endpoint `/metrics` (wartości po podziale, token) |
-| `test_job_logging.py` | Prefiks `[job=<jobId>]` w logach żądania `/api/split` |
+| `test_job_logging.py` | Prefiks `[job=<jobId>]` w logach przetwarzania (kontekst przenosi się do wątku roboczego) |
 | `test_normalization.py` | Normalizacja ASCII (diakrytyki, `ł`→`l`, wielkość liter, kompresja spacji) po obu stronach porównania |
 | `test_rule_classifier.py` | Punktacja reguł: nagłówek, frazy, frazy wykluczające, progi pierwszej strony i braku dopasowania |
 | `test_repository_mapping.py` | Filtrowanie aktywnych wzorców w repozytorium |
@@ -758,7 +877,8 @@ uruchamia się ręcznie przeciw lokalnemu modelowi (poza pytest) do strojenia pr
 
 **Działa i wdrożone:** OCR skanów (Tesseract), klasyfikacja regułowa ze słownika,
 fallback LLM ze strażnikiem spójności, konfigurowalny prompt, bramka pustych stron,
-diagnostyka `reviewReasons`. Serwis bezstanowy, bez bazy danych.
+diagnostyka `reviewReasons`, kolejka zadań (202 + `jobId` + odpytywanie — kilka
+paczek naraz bez timeoutów). Serwis bez bazy danych; kolejka w pamięci procesu.
 
 **Zaplanowane (backlog):**
 
