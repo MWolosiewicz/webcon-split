@@ -40,18 +40,26 @@ public class SplitPdfActionConfig : SplitterConnectionConfig
         Order = 13)]
     public int PatternsDataSourceId { get; set; }
 
+    // UWAGA: pola opcjonalne MUSZA byc nullowalne (int?). Przy typie `int`
+    // Designer Studio wysyla dla niewypelnionego pola pusty string, a SDK
+    // wywraca akcje jeszcze przed jej uruchomieniem:
+    //   Invalid configuration. PropertyName: "...", type: "Int32",
+    //   invalid value: "" - The input string '' was not in a correct format.
+    // Wartosci czytamy przez GetValueOrDefault(), zeby `null` znaczylo to samo
+    // co 0 ("nie zapisuj") - patrz SplitPdfAction.
+
     [ConfigEditableFormFieldID(
         DisplayName = "Requires review field ID",
         Description = "Opcjonalne: pole tak/nie w obiegu docelowym na flage weryfikacji. Puste = nie zapisuj.",
         Order = 14)]
-    public int RequiresReviewFieldId { get; set; }
+    public int? RequiresReviewFieldId { get; set; }
 
     [ConfigEditableFormFieldID(
         DisplayName = "Review reasons field ID",
         Description = "Opcjonalne: pole tekstowe na powody weryfikacji (jeden na linie). " +
                       "Ustawione = powody nie dubluja sie w komentarzu. Puste = powody do komentarza.",
         Order = 15)]
-    public int ReviewReasonsFieldId { get; set; }
+    public int? ReviewReasonsFieldId { get; set; }
 
     [ConfigEditableFormFieldID(
         DisplayName = "Parent element ID field ID",
@@ -59,5 +67,5 @@ public class SplitPdfActionConfig : SplitterConnectionConfig
                       "nadrzednego (paczki skanow). Puste = nie zapisuj. Relacja systemowa " +
                       "rodzic-dziecko jest ustawiana zawsze, niezaleznie od tego pola.",
         Order = 16)]
-    public int ParentElementIdFieldId { get; set; }
+    public int? ParentElementIdFieldId { get; set; }
 }

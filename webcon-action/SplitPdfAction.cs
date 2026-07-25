@@ -72,18 +72,23 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
 
                 await newDocument.Comment.AddCommentAsync(FormatDetectionComment(detected));
 
-                if (Configuration.RequiresReviewFieldId > 0)
+                // GetValueOrDefault(): pole niewypelnione w Designer Studio to
+                // null, ktore ma znaczyc "nie zapisuj" - tak samo jak 0
+                var requiresReviewFieldId = Configuration.RequiresReviewFieldId.GetValueOrDefault();
+                if (requiresReviewFieldId > 0)
                     await newDocument.SetFieldValueAsync(
-                        Configuration.RequiresReviewFieldId, detected.RequiresReview);
+                        requiresReviewFieldId, detected.RequiresReview);
 
-                if (Configuration.ReviewReasonsFieldId > 0)
+                var reviewReasonsFieldId = Configuration.ReviewReasonsFieldId.GetValueOrDefault();
+                if (reviewReasonsFieldId > 0)
                     await newDocument.SetFieldValueAsync(
-                        Configuration.ReviewReasonsFieldId,
+                        reviewReasonsFieldId,
                         string.Join(Environment.NewLine, detected.ReviewReasons));
 
-                if (Configuration.ParentElementIdFieldId > 0)
+                var parentElementIdFieldId = Configuration.ParentElementIdFieldId.GetValueOrDefault();
+                if (parentElementIdFieldId > 0)
                     await newDocument.SetFieldValueAsync(
-                        Configuration.ParentElementIdFieldId, args.Context.CurrentDocument.ID);
+                        parentElementIdFieldId, args.Context.CurrentDocument.ID);
 
                 var started = await documentsManager.StartNewWorkFlowAsync(
                     new StartNewWorkFlowParams(newDocument, startPathId));
@@ -142,8 +147,11 @@ public class SplitPdfAction : CustomAction<SplitPdfActionConfig>
             $"confidence {detected.Confidence:0.00}; requires review: {detected.RequiresReview}";
         if (detected.RemovedPages.Count > 0)
             comment += $"; usunieto puste strony: {string.Join(", ", detected.RemovedPages)}";
-        // powody trafiaja do komentarza tylko, gdy nie sa zapisywane w dedykowanym polu
-        if (Configuration.ReviewReasonsFieldId <= 0 && detected.ReviewReasons.Count > 0)
+        // powody trafiaja do komentarza tylko, gdy nie sa zapisywane w dedykowanym polu.
+        // GetValueOrDefault() jest tu KONIECZNE: dla int? wyrazenie `null <= 0`
+        // daje w C# false, wiec bez tego powody przestalyby trafiac do komentarza
+        // przy niewypelnionym polu - czyli dokladnie w przypadku, ktory ma je tam kierowac
+        if (Configuration.ReviewReasonsFieldId.GetValueOrDefault() <= 0 && detected.ReviewReasons.Count > 0)
             comment += $"; review reasons: {string.Join("; ", detected.ReviewReasons)}";
         return comment;
     }
