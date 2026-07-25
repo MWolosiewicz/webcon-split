@@ -9,6 +9,14 @@
       "type": "CustomAction"
     },
     {
+      "guid": "3c98a26c-49da-4df4-a9b5-4d2b5aba9db1",
+      "name": "SubmitSplitJobAction",
+      "description": "Zleca podzial paczki skanu do serwisu PDF Splitter i zapisuje identyfikator zadania; nie czeka na wynik.",
+      "assembly": "WebconPdfSplitterAction",
+      "class": "WebconPdfSplitterAction.SubmitSplitJobAction",
+      "type": "CustomAction"
+    },
+    {
       "guid": "b3158154-3836-42a7-abe1-13712729486d",
       "name": "RemovePagesAction",
       "description": "Usuwa wskazany zakres stron z zalacznika PDF (jednego w dozwolonych kategoriach); podmienia w miejscu lub tworzy nowy zalacznik.",
