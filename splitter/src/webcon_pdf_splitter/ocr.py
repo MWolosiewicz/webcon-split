@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass
 from typing import Protocol
 
 from webcon_pdf_splitter import metrics
@@ -15,14 +16,30 @@ def alnum_count(text: str) -> int:
     return sum(1 for ch in text if ch.isalnum())
 
 
+@dataclass
+class PageRead:
+    """Wynik odczytu jednej strony.
+
+    `blank=True` znaczy "potwierdzona pustka wizualna" - obraz strony nie
+    zawiera atramentu. Brak tekstu SAM W SOBIE nie ustawia tej flagi:
+    strona, ktorej OCR nie odczytal, ma pusty tekst i `blank=False`.
+    """
+
+    text: str
+    blank: bool = False
+
+
 class OcrEngine(Protocol):
-    def extract_page_texts(self, pdf_path: str) -> list[str]:
+    def read_pages(self, pdf_path: str) -> list[PageRead]:
         ...
 
 
 class StubOcrEngine:
+    def read_pages(self, pdf_path: str) -> list[PageRead]:
+        return [PageRead(text="UMOWA O PRACE")]
+
     def extract_page_texts(self, pdf_path: str) -> list[str]:
-        return ["UMOWA O PRACE"]
+        return [read.text for read in self.read_pages(pdf_path)]
 
 
 class PdfTextOcrEngine:
@@ -37,6 +54,11 @@ class PdfTextOcrEngine:
 
         reader = PdfReader(pdf_path)
         return [page.extract_text() or "" for page in reader.pages]
+
+    def read_pages(self, pdf_path: str) -> list[PageRead]:
+        # sama warstwa tekstowa nie ocenia obrazu - zadna strona nie jest
+        # oznaczana jako wizualnie pusta
+        return [PageRead(text=text) for text in self.extract_page_texts(pdf_path)]
 
 
 class TextLayerWithOcrFallback:
@@ -53,7 +75,7 @@ class TextLayerWithOcrFallback:
         self._text_layer = text_layer or PdfTextOcrEngine()
         self._min_text_chars = min_text_chars
 
-    def extract_page_texts(self, pdf_path: str) -> list[str]:
+    def read_pages(self, pdf_path: str) -> list[PageRead]:
         texts = list(self._text_layer.extract_page_texts(pdf_path))
         empty_indices = [
             index
@@ -61,7 +83,7 @@ class TextLayerWithOcrFallback:
             if alnum_count(text) < self._min_text_chars
         ]
         if not empty_indices:
-            return texts
+            return [PageRead(text=text) for text in texts]
         try:
             ocr_texts = self._page_ocr.ocr_pages(pdf_path, empty_indices)
         except Exception:
@@ -70,7 +92,7 @@ class TextLayerWithOcrFallback:
                 [i + 1 for i in empty_indices],
                 exc_info=True,
             )
-            return texts
+            return [PageRead(text=text) for text in texts]
         # Nadpisuj warstwe tekstowa tylko gdy OCR dostarczyl WIECEJ tresci -
         # inaczej krotki, ale realny tekst (albo pusty OCR przy braku binarki)
         # skasowalby oryginal (utrata danych).
@@ -90,7 +112,10 @@ class TextLayerWithOcrFallback:
                 "OCR nie poprawil stron %s - zachowano tekst warstwy",
                 not_improved,
             )
-        return texts
+        return [PageRead(text=text) for text in texts]
+
+    def extract_page_texts(self, pdf_path: str) -> list[str]:
+        return [read.text for read in self.read_pages(pdf_path)]
 
 
 class TesseractPageOcr:

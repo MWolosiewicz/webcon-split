@@ -242,3 +242,24 @@ def test_tesseract_ocr_empty_index_list_returns_empty_dict(tmp_path):
 
     engine = TesseractPageOcr()
     assert engine.ocr_pages(str(pdf_path), []) == {}
+
+
+def test_read_pages_returns_text_and_blank_flag():
+    from webcon_pdf_splitter.ocr import PageRead, PdfTextOcrEngine
+
+    composite = TextLayerWithOcrFallback(
+        page_ocr=_FakePageOcr({}),
+        text_layer=_FakeTextLayer(["Pelna umowa o prace z wieloma slowami w warstwie"]),
+        min_text_chars=25,
+    )
+
+    reads = composite.read_pages("born-digital.pdf")
+
+    assert reads == [
+        PageRead(text="Pelna umowa o prace z wieloma slowami w warstwie", blank=False)
+    ]
+    # nakladka zachowuje dotychczasowy interfejs
+    assert composite.extract_page_texts("born-digital.pdf") == [
+        "Pelna umowa o prace z wieloma slowami w warstwie"
+    ]
+    assert PdfTextOcrEngine().read_pages.__name__ == "read_pages"
