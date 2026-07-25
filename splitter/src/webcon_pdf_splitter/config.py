@@ -58,3 +58,6 @@ class SplitterSettings(BaseSettings):
     blank_detect_dpi: int = Field(default=60)
     blank_max_ink_ratio: float = Field(default=0.002)
     blank_margin_ratio: float = Field(default=0.04)
+    worker_count: int = Field(default=1)
+    max_queue_size: int = Field(default=50)
+    job_result_ttl_seconds: int = Field(default=3600)
