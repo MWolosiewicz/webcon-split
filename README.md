@@ -664,7 +664,20 @@ docker run --rm -v "$PWD":/mnt/proj -e PYTHONPATH=/mnt/proj/src \
 **Testowe PDF-y:**
 
 - `scripts/make_scanned_bundle.py` — „skan" **bez warstwy tekstowej** (strony jako
-  obrazy) do testu OCR; flagi `--z-nieznanym`, `--z-pusta`, `--dpi N`. Wymaga Pillow.
+  obrazy) do testu OCR; flagi `--z-nieznanym`, `--z-pusta`, `--z-separatorami`,
+  `--z-dowodem`, `--dpi N`. Wymaga Pillow.
+
+  Do weryfikacji wykrywania pustych stron:
+
+  ```bash
+  python scripts/make_scanned_bundle.py --z-separatorami --z-dowodem
+  ```
+
+  Daje paczkę z białymi kartkami między dokumentami (z artefaktami realnego
+  skanu: czarna krawędź szyby, dziurki, kurz) oraz ze **skanem dowodu
+  osobistego** — dużo atramentu, zero czytelnego tekstu. Pierwsze mają zniknąć,
+  drugi **musi przetrwać**. Pomiary sprawdzisz w logu:
+  `docker compose logs | Select-String "pokrycie atramentem"`.
 - `scripts/make_test_documents.py` / `make_test_bundle.py` — paczki born-digital
   (z warstwą tekstową) i `wzorce_testowe.json` do pola `patterns`. Wymaga fpdf2.
 
@@ -738,7 +751,7 @@ uruchamia się ręcznie przeciw lokalnemu modelowi (poza pytest) do strojenia pr
 |---|---|
 | `make_test_documents.py` | Zestaw paczek born-digital pokrywających scenariusze pipeline'u (czysty podział, wtrącenie, obcy początek/ogon, paczka nieznana) + `wzorce_testowe.json` |
 | `make_test_bundle.py` | Pojedyncza paczka testowa z kilkoma dokumentami HR (`--z-nieznanym`) |
-| `make_scanned_bundle.py` | „Skan" bez warstwy tekstowej (strony jako obrazy, Pillow) do weryfikacji fallbacku OCR (`--z-nieznanym`, `--z-pusta`, `--dpi`) |
+| `make_scanned_bundle.py` | „Skan" bez warstwy tekstowej (strony jako obrazy, Pillow) do weryfikacji fallbacku OCR i wykrywania pustych stron (`--z-nieznanym`, `--z-pusta`, `--z-separatorami`, `--z-dowodem`, `--dpi`) |
 | `llm_eval.py` | Ewaluacja promptu LLM na przypadkach z `scripts/eval_cases/` przeciw żywemu endpointowi (poza pytest); do strojenia promptu |
 
 ## Status i ograniczenia

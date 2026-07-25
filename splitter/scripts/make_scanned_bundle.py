@@ -9,11 +9,19 @@ Uzycie:
     python scripts/make_scanned_bundle.py [sciezka_wyjsciowa.pdf] [opcje]
 
 Opcje:
-    --z-nieznanym   dodaje dokument spoza slownika (wniosek o okulary) -
-                    test sciezki "wymaga weryfikacji" + propozycji LLM
-    --z-pusta       dodaje jedna pusta (biala) strone - test bramki
-                    "pusta strona omija LLM" (doklejenie + requiresReview)
-    --dpi N         rozdzielczosc renderu (domyslnie 150)
+    --z-nieznanym     dodaje dokument spoza slownika (wniosek o okulary) -
+                      test sciezki "wymaga weryfikacji" + propozycji LLM
+    --z-pusta         dodaje jedna pusta (biala) strone na koncu paczki
+    --z-separatorami  wstawia biala kartke miedzy dokumenty, z artefaktami
+                      realnego skanu (czarna krawedz szyby, dziurki po
+                      dziurkaczu, kurz) - test progu pokrycia atramentem
+    --z-dowodem       wstawia skan dowodu osobistego: duzo atramentu, zero
+                      czytelnego tekstu. KLUCZOWY przypadek regresji -
+                      taka strona MUSI przetrwac podzial
+    --dpi N           rozdzielczosc renderu (domyslnie 150)
+
+Do weryfikacji wykrywania pustych stron uzywaj:
+    python scripts/make_scanned_bundle.py --z-separatorami --z-dowodem
 
 Domyslne wyjscie: test-data/skan_dokumenty_hr.pdf w katalogu glownym repo.
 Wzorce do pola `patterns` bierz z test-data/wzorce_testowe.json
@@ -23,9 +31,15 @@ Wymaga: pip install Pillow
 """
 
 import sys
+import unicodedata
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
+
+
+def _ascii(text: str) -> str:
+    """Diakrytyki poza konsole Windows (cp1252) - tylko do wydruku opisu."""
+    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
 
 # Tekst z polskimi znakami - realny skan ma diakrytyki; klasyfikator i tak
 # normalizuje obie strony do ASCII, wiec naglowki pasuja do wzorcow.
@@ -147,8 +161,80 @@ def _blank_page(dpi: int) -> Image.Image:
     return Image.new("RGB", (width, height), "white")
 
 
+def _scanner_noise(image: Image.Image, dpi: int) -> Image.Image:
+    """Dokleja artefakty realnego skanu pustej kartki.
+
+    Czarny pas przy krawedzi (szyba skanera), dziurki po dziurkaczu i kurz.
+    Wszystko lezy w odcinanym marginesie albo jest ponizej progu pokrycia,
+    wiec strona MA pozostac wykryta jako pusta - to test odpornosci progu,
+    a nie prosty przypadek idealnej bieli.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    edge = round(dpi * 0.04)
+    draw.rectangle([0, 0, edge, height], fill=(30, 30, 30))
+    hole_r = round(dpi * 0.06)
+    for fraction in (0.30, 0.50, 0.70):
+        cy = round(height * fraction)
+        cx = round(dpi * 0.18)
+        draw.ellipse([cx - hole_r, cy - hole_r, cx + hole_r, cy + hole_r], fill=(40, 40, 40))
+    for index in range(40):
+        x = round(width * (0.2 + 0.015 * (index % 40)))
+        y = round(height * (0.15 + 0.02 * (index % 35)))
+        draw.point((x, y), fill=(90, 90, 90))
+    return image
+
+
+def _id_card_page(dpi: int) -> Image.Image:
+    """Skan dowodu osobistego: DUZO atramentu, ZERO czytelnego tekstu.
+
+    Kluczowy przypadek regresji incydentu 2026-07-24: Tesseract nie odczyta
+    z takiej strony nic (0 znakow alnum), ale strona jest pelna tresci
+    i NIE MOZE zostac usunieta. Zamiast tekstu rysujemy mikrodruk (cienkie
+    kreski) - dla OCR nieczytelny, dla bramki atramentowej wyraznie widoczny.
+    """
+    width = round(8.27 * dpi)
+    height = round(11.69 * dpi)
+    image = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(image)
+
+    # kartonik w formacie ID-1 (85.6 x 54 mm) mniej wiecej na srodku strony
+    card_w, card_h = round(dpi * 3.37), round(dpi * 2.13)
+    x0 = (width - card_w) // 2
+    y0 = round(height * 0.32)
+    draw.rectangle(
+        [x0, y0, x0 + card_w, y0 + card_h],
+        fill=(198, 206, 214),
+        outline=(60, 60, 60),
+        width=max(2, round(dpi * 0.02)),
+    )
+    # zdjecie posiadacza
+    photo_x = x0 + round(card_w * 0.06)
+    photo_y = y0 + round(card_h * 0.20)
+    draw.rectangle(
+        [photo_x, photo_y, photo_x + round(card_w * 0.26), photo_y + round(card_h * 0.62)],
+        fill=(78, 78, 78),
+    )
+    # mikrodruk: kreski imitujace pola danych - OCR nie zrobi z tego znakow
+    line_x = x0 + round(card_w * 0.38)
+    line_w = round(card_w * 0.52)
+    for index in range(7):
+        ly = y0 + round(card_h * (0.22 + index * 0.085))
+        draw.rectangle(
+            [line_x, ly, line_x + round(line_w * (0.55 + 0.06 * (index % 5))), ly + max(2, round(dpi * 0.022))],
+            fill=(55, 55, 55),
+        )
+    # pasek MRZ na dole kartonika
+    draw.rectangle(
+        [x0 + round(card_w * 0.05), y0 + round(card_h * 0.86),
+         x0 + round(card_w * 0.95), y0 + round(card_h * 0.93)],
+        fill=(70, 70, 70),
+    )
+    return image
+
+
 def main() -> None:
-    with_unknown = with_blank = False
+    with_unknown = with_blank = with_separators = with_id_card = False
     dpi = 150
     positional: list[str] = []
     args = iter(sys.argv[1:])
@@ -157,6 +243,10 @@ def main() -> None:
             with_unknown = True
         elif arg == "--z-pusta":
             with_blank = True
+        elif arg == "--z-separatorami":
+            with_separators = True
+        elif arg == "--z-dowodem":
+            with_id_card = True
         elif arg == "--dpi":
             dpi = int(next(args))
         else:
@@ -170,12 +260,31 @@ def main() -> None:
     if with_unknown:
         documents.insert(2, WNIOSEK_OKULARY)
 
+    # opis stron - drukowany na koncu, zeby bylo z czym porownac wynik podzialu
     pages: list[Image.Image] = []
-    for document in documents:
+    layout: list[str] = []
+
+    def add(image: Image.Image, description: str) -> None:
+        pages.append(image)
+        layout.append(f"  strona {len(pages):>2}: {_ascii(description)}")
+
+    for index, document in enumerate(documents):
         for header, body in document:
-            pages.append(_render_page(header, body, dpi))
+            add(_render_page(header, body, dpi), header or "  (ciag dalszy)")
+        # separator po kazdym dokumencie procz ostatniego - tak wyglada
+        # realna paczka ze skanera z kartkami rozdzielajacymi
+        if with_separators and index < len(documents) - 1:
+            add(
+                _scanner_noise(_blank_page(dpi), dpi),
+                "BIALA KARTKA (separator, z artefaktami skanu) -> do usuniecia",
+            )
+        if with_id_card and index == 0:
+            add(
+                _id_card_page(dpi),
+                "SKAN DOWODU (atrament, zero tekstu dla OCR) -> MUSI zostac",
+            )
     if with_blank:
-        pages.append(_blank_page(dpi))
+        add(_blank_page(dpi), "BIALA KARTKA (na koncu paczki) -> do usuniecia")
 
     pages[0].save(
         str(output),
@@ -184,19 +293,17 @@ def main() -> None:
         append_images=pages[1:],
         resolution=float(dpi),
     )
-    extras = []
-    if with_unknown:
-        extras.append("+ wniosek spoza slownika")
-    if with_blank:
-        extras.append("+ pusta strona")
     print(
         f"Zapisano {output.resolve()} ({len(pages)} stron, {dpi} DPI, "
-        f"bez warstwy tekstowej) {' '.join(extras)}".strip()
+        "bez warstwy tekstowej)"
     )
+    print("Uklad paczki:")
+    print("\n".join(layout))
     print(
-        "Test:\n"
+        "\nTest (tryb keep - nic nie zniknie, ale log pokaze pokrycie atramentem):\n"
         f'  curl.exe -s -X POST http://localhost:8010/api/split '
-        f'-F "file=@{output.name}" -F "patterns=<test-data/wzorce_testowe.json"'
+        f'-F "file=@{output.name}" -F "patterns=<test-data/wzorce_testowe.json"\n'
+        "  docker compose logs --tail 200 | Select-String \"pokrycie atramentem\""
     )
 
 
