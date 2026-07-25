@@ -209,26 +209,45 @@ zapisuje `jobId` i date zlecenia. Trwa tyle, co transfer pliku.
 **Zlecenie jest najlepszym staraniem, nie warunkiem przejscia.** Element
 przechodzi do "Przetwarzania" **zawsze** - takze gdy zlecenie sie nie udalo
 (`503` z pelnej kolejki, zerwana siec, niedostepny kontener). Akcja zapisuje
-wtedy powod w polu statusu, zwieksza `Liczba prob` i **nie** ustawia
-`HasErrors`: uzytkownik klikajacy sciezke nie moze dostac bledu dlatego, ze
-kolejka jest chwilowo pelna.
+wtedy powod w polu statusu i **nie** ustawia `HasErrors`: uzytkownik klikajacy
+sciezke nie moze dostac bledu dlatego, ze kolejka jest chwilowo pelna.
 
 `CollectSplitJobAction` - akcja cykliczna na kroku "Przetwarzanie". Zaczyna od
 sprawdzenia, czy element ma `jobId`:
 
-- **brak `jobId`** -> zleca (ta sama logika co akcja zlecajaca), zwieksza
-  `Liczba prob`, konczy;
+- **brak `jobId`** -> zleca (ta sama logika co akcja zlecajaca), konczy;
 - `queued` / `running` -> aktualizuje pole statusu, konczy;
 - `done` -> pobiera wynik, tworzy dokumenty potomne (kod przeniesiony
   z `SplitPdfAction.cs:54-96`), kasuje zadanie, przechodzi na "Podzielona";
-- `failed` -> przechodzi na "Blad" z trescia bledu w polu statusu;
-- `404` -> czysci `jobId`; nastepny takt potraktuje element jak "brak `jobId`"
-  i zleci ponownie;
-- `Liczba prob` przekracza limit -> "Blad", niezaleznie od powodu.
+- `failed` -> zwieksza `Liczba prob`; powyzej limitu "Blad", inaczej czysci
+  `jobId` i pozwala zlecic ponownie;
+- `404` -> zwieksza `Liczba prob`, czysci `jobId`; nastepny takt potraktuje
+  element jak "brak `jobId`".
 
 Dzieki temu `503`, blad sieci, `404` i wygasly wynik maja **jedna wspolna
 sciezke** ("brak waznego zadania -> zlec ponownie") zamiast czterech osobnych
 obslug. Logika zlecania zyje w jednym miejscu i jest wywolywana z obu akcji.
+
+### Licznik prob broni przed zatruta paczka, nie przed zajetoscia
+
+Rozroznienie krytyczne dla zachowania w szczycie:
+
+| Sytuacja | `Liczba prob` | Uzasadnienie |
+|---|---|---|
+| `503` - kolejka pelna | **nie rosnie** | Poprawna praca pod obciazeniem, nie awaria |
+| Brak polaczenia z kontenerem | **nie rosnie** | Restart lub okno serwisowe mija samo |
+| `404` - zadanie przepadlo | rosnie | Powtarzalna utrata wskazuje na problem |
+| `failed` - zadanie zakonczone bledem | rosnie | Cos w tej paczce powoduje porazke |
+
+Gdyby `503` zwiekszal licznik, element odpytywany co minute wypalilby limit
+w kilka minut i trafil do "Bledu" **mimo poprawnie dzialajacego systemu** -
+dokladnie w szczycie, przed ktorym ta kolejka ma chronic. Zajetosc i awaria to
+dwie rozne rzeczy i wymagaja roznych reakcji.
+
+Nieograniczone ponawianie przy `503` nie jest luka: elementem, ktory utknal
+z powodu trwalej niedostepnosci uslugi, zajmuje sie **akcja na timeout** w kroku
+"Przetwarzanie" (N minut od `Data zlecenia` -> "Blad"). To wlasciwe narzedzie,
+bo mierzy realny czas oczekiwania, a nie liczbe prob.
 
 ## Tryby awarii
 
@@ -271,7 +290,12 @@ tego, jak ta semantyka wyglada.
 "Przetwarzania" bez `jobId`, z powodem w polu statusu; kolejny takt akcji
 odbierajacej zleca ponownie (wspolna sciezka "brak waznego zadania"). Klikajacy
 sciezke uzytkownik nie widzi bledu - widzi element w kroku "Przetwarzanie"
-z opisem "kolejka pelna, ponowienie".
+z opisem "kolejka pelna, ponowienie". **`Liczba prob` nie rosnie** - patrz
+"Licznik prob broni przed zatruta paczka".
+
+Glebokosc kolejki to nie sufit na liczbe dodanych paczek, tylko na liczbe
+**oczekujacych**; zadanie zdjete przez workera zwalnia miejsce. Nadmiarowe
+paczki czekaja dluzej, ale zadna nie jest odrzucana trwale.
 
 **Zgubiona odpowiedz na zlecenie.** Zamknieta deduplikacja po
 `X-Webcon-Element-Id` (wyzej).
@@ -307,11 +331,24 @@ Skoro i tak lamiemy zgodnosc, to wlasciwy moment na usuniecie z obu stron
 | Zmienna | Domyslnie | Znaczenie |
 |---|---|---|
 | `SPLITTER_WORKER_COUNT` | `1` | Ile paczek naraz. Jedynka = gwarancja "po kolei" |
-| `SPLITTER_MAX_QUEUE_SIZE` | `50` | Powyzej - `503` z `Retry-After` |
+| `SPLITTER_MAX_QUEUE_SIZE` | `50` | Ile zadan moze **czekac**; powyzej - `503` z `Retry-After` |
 | `SPLITTER_JOB_RESULT_TTL_SECONDS` | `3600` | Ile wynik czeka na odbior |
 
-Istniejace zmienne bez zmian. Po stronie dodatku dochodzi maksymalna liczba prob;
-interwal odpytywania to harmonogram akcji cyklicznej w WEBCON, nie parametr kodu.
+**Dobor glebokosci kolejki** wynika z miejsca na dysku, nie z przepustowosci:
+kazde oczekujace zadanie trzyma swoj PDF w `SPLITTER_WORK_DIR`, wiec
+`max_queue_size x sredni rozmiar paczki` musi miescic sie w wolnym miejscu
+z zapasem. Domyslne 50 zaklada paczki rzedu 20 MB (okolo 1 GB) - **wartosc do
+zweryfikowania realnymi rozmiarami po wdrozeniu**. Zwiekszenie glebokosci nie
+podnosi przepustowosci: przy jednym workerze i ~2 min na paczke pelna
+piecdziesieciolementowa kolejka oznacza okolo 100 minut oczekiwania dla
+ostatniej. Glebsza kolejka daje dluzszy ogon, nie szybsze przetwarzanie.
+
+**TTL wyniku** musi z duzym zapasem przekraczac interwal odpytywania - 3600 s
+przy takcie minutowym daje 60 szans na odbior.
+
+Istniejace zmienne bez zmian. Po stronie dodatku dochodzi maksymalna liczba prob
+(domyslnie 3); interwal odpytywania to harmonogram akcji cyklicznej w WEBCON,
+nie parametr kodu.
 
 ## Zakres zmian w kodzie
 
