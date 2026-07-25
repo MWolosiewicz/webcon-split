@@ -6,14 +6,14 @@ namespace WebconPdfSplitterAction;
 public class CollectSplitJobActionConfig : SplitJobFieldsConfig
 {
     [ConfigEditableDataSourceID(
-        DisplayName = "Patterns data source ID",
+        DisplayName = "Zrodlo danych ze wzorcami",
         Description = "Zrodlo wzorcow - uzywane przy ponownym zleceniu, gdy zadanie przepadlo.",
         IsRequired = true,
         Order = 13)]
     public int PatternsDataSourceId { get; set; }
 
     [ConfigEditableText(
-        DisplayName = "Target workflow ID (HR document)",
+        DisplayName = "ID obiegu docelowego (Dokument HR)",
         Description = "ID obiegu, w ktorym maja powstawac elementy dokumentow HR.",
         IsRequired = true,
         TagEvaluationMode = EvaluationMode.Default,
@@ -21,7 +21,7 @@ public class CollectSplitJobActionConfig : SplitJobFieldsConfig
     public string TargetWorkflowId { get; set; } = "";
 
     [ConfigEditableText(
-        DisplayName = "Target document type ID (HR document)",
+        DisplayName = "ID typu formularza docelowego (Dokument HR)",
         Description = "ID typu formularza dla elementow dokumentow HR.",
         IsRequired = true,
         TagEvaluationMode = EvaluationMode.Default,
@@ -29,7 +29,7 @@ public class CollectSplitJobActionConfig : SplitJobFieldsConfig
     public string TargetDocTypeId { get; set; } = "";
 
     [ConfigEditableText(
-        DisplayName = "Start path ID (HR document workflow)",
+        DisplayName = "ID sciezki startowej (obieg Dokument HR)",
         Description = "ID sciezki przejscia, ktora nowy element ma wystartowac.",
         IsRequired = true,
         TagEvaluationMode = EvaluationMode.Default,
@@ -37,20 +37,20 @@ public class CollectSplitJobActionConfig : SplitJobFieldsConfig
     public string StartPathId { get; set; } = "";
 
     [ConfigEditableFormFieldID(
-        DisplayName = "Requires review field ID",
+        DisplayName = "Pole na flage weryfikacji",
         Description = "Opcjonalne: pole tak/nie w obiegu docelowym na flage weryfikacji. Puste = nie zapisuj.",
         Order = 33)]
     public int? RequiresReviewFieldId { get; set; }
 
     [ConfigEditableFormFieldID(
-        DisplayName = "Review reasons field ID",
+        DisplayName = "Pole na powody weryfikacji",
         Description = "Opcjonalne: pole tekstowe na powody weryfikacji (jeden na linie). " +
                       "Ustawione = powody nie dubluja sie w komentarzu. Puste = powody do komentarza.",
         Order = 34)]
     public int? ReviewReasonsFieldId { get; set; }
 
     [ConfigEditableFormFieldID(
-        DisplayName = "Parent element ID field ID",
+        DisplayName = "Pole na ID elementu nadrzednego",
         Description = "Opcjonalne: pole na ID elementu nadrzednego (paczki skanow). Puste = nie zapisuj. " +
                       "Relacja systemowa rodzic-dziecko jest ustawiana zawsze.",
         Order = 35)]
@@ -67,7 +67,7 @@ public class CollectSplitJobActionConfig : SplitJobFieldsConfig
     public bool SkipPermissionsCheck { get; set; } = true;
 
     [ConfigEditableInteger(
-        DisplayName = "Max attempts",
+        DisplayName = "Maksymalna liczba prob",
         Description = "Po ilu NIEUDANYCH probach (404 lub failed) element jest oznaczany jako bledny. " +
                       "Zajetosc serwisu (503) i brak polaczenia sie nie licza.",
         DefaultValue = 3,

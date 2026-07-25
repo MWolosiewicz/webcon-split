@@ -23,7 +23,7 @@ public class ExtractPagesToNewFormActionConfig : SplitterConnectionConfig
     public string PageRange { get; set; } = "";
 
     [ConfigEditableText(
-        DisplayName = "Target workflow ID",
+        DisplayName = "ID obiegu docelowego",
         Description = "ID obiegu, w ktorym ma powstac nowy element weryfikacyjny. Liczba lub tag/stala.",
         IsRequired = true,
         TagEvaluationMode = EvaluationMode.Default,
@@ -31,7 +31,7 @@ public class ExtractPagesToNewFormActionConfig : SplitterConnectionConfig
     public string TargetWorkflowId { get; set; } = "";
 
     [ConfigEditableText(
-        DisplayName = "Target document type ID",
+        DisplayName = "ID typu formularza docelowego",
         Description = "ID typu formularza nowego elementu. Liczba lub tag/stala.",
         IsRequired = true,
         TagEvaluationMode = EvaluationMode.Default,
@@ -39,7 +39,7 @@ public class ExtractPagesToNewFormActionConfig : SplitterConnectionConfig
     public string TargetDocTypeId { get; set; } = "";
 
     [ConfigEditableText(
-        DisplayName = "Start path ID",
+        DisplayName = "ID sciezki startowej",
         Description = "ID sciezki, ktora nowy element ma wystartowac. Liczba lub tag/stala.",
         IsRequired = true,
         TagEvaluationMode = EvaluationMode.Default,

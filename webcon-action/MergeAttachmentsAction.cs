@@ -52,13 +52,9 @@ public class MergeAttachmentsAction : CustomAction<MergeAttachmentsActionConfig>
                 throw new InvalidOperationException(
                     "Lista pozycji nie wskazuje zadnego zalacznika do sklejenia.");
 
-            PageOpResult result;
-            using (var httpClient = new System.Net.Http.HttpClient
-                   { Timeout = TimeSpan.FromSeconds(Configuration.TimeoutSeconds) })
-            {
-                var client = new SplitterClient(httpClient, Configuration.SplitterBaseUrl, Configuration.ApiToken);
-                result = await client.MergeAsync(inputs, args.Context.CurrentDocument.ID);
-            }
+            var client = new SplitterClient(
+                Configuration.SplitterBaseUrl, Configuration.ApiToken, Configuration.TimeoutSeconds);
+            var result = await client.MergeAsync(inputs, args.Context.CurrentDocument.ID);
 
             var outputBytes = Convert.FromBase64String(result.FileContentBase64);
             var newAttachment = await manager.GetNewAttachmentAsync(Configuration.OutputFileName, outputBytes);

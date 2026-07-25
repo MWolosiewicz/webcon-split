@@ -7,7 +7,7 @@ namespace WebconPdfSplitterAction;
 public class SplitterConnectionConfig : PluginConfiguration
 {
     [ConfigEditableText(
-        DisplayName = "Splitter base URL",
+        DisplayName = "Adres serwisu splittera",
         Description = "Adres lokalnego serwisu PDF Splitter, np. http://localhost:8000. " +
                       "Musi byc osiagalny z serwera WEBCON BPS (WorkflowService).",
         DefaultText = "http://localhost:8000",
@@ -17,7 +17,7 @@ public class SplitterConnectionConfig : PluginConfiguration
     public string SplitterBaseUrl { get; set; } = "http://localhost:8000";
 
     [ConfigEditableText(
-        DisplayName = "Splitter API token",
+        DisplayName = "Token API splittera",
         Description = "Token wysylany jako 'Authorization: Bearer ...'. Identyczny z SPLITTER_API_TOKEN. " +
                       "Zostaw puste tylko, jesli serwis dziala bez tokenu (niezalecane).",
         IsPasswordField = true,
@@ -26,7 +26,7 @@ public class SplitterConnectionConfig : PluginConfiguration
     public string ApiToken { get; set; } = "";
 
     [ConfigEditableInteger(
-        DisplayName = "Timeout in seconds",
+        DisplayName = "Limit czasu odpowiedzi (sekundy)",
         Description = "Maksymalny czas oczekiwania na odpowiedz serwisu; domyslnie 300 s.",
         DefaultValue = 300,
         MinValue = 10,

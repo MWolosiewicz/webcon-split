@@ -5,7 +5,7 @@ namespace WebconPdfSplitterAction;
 public class SubmitSplitJobActionConfig : SplitJobFieldsConfig
 {
     [ConfigEditableDataSourceID(
-        DisplayName = "Patterns data source ID",
+        DisplayName = "Zrodlo danych ze wzorcami",
         Description = "Zrodlo danych zwracajace aktywne wzorce rozpoznawania. " +
                       "Wymagane kolumny: DocumentType, Header, Phrases, ExcludedPhrases, Weight.",
         IsRequired = true,

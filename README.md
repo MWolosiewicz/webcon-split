@@ -425,19 +425,25 @@ na stronach. Uwierzytelnianie i nagłówek `X-Webcon-Element-Id` jak w `/api/spl
 
 ## Integracja z WEBCON
 
-Środowisko docelowe: **WEBCON BPS 2026.1** (domyślnie) lub **BPS 2025 R2**
-(`package.ps1 -Sdk 2025`). Akcje podziału: `SubmitSplitJobAction` (zlecenie)
+Środowisko docelowe: **WEBCON BPS 2026.1** lub **BPS 2025 R2** — plugin budowany
+jest dla obu linii. Akcje podziału: `SubmitSplitJobAction` (zlecenie)
 i `CollectSplitJobAction` (odbiór, cykliczna), zbudowane na
 `WEBCON.BPS.<linia>.SDK.Libraries`, podpisane strong name. Wymagają licencji SDK.
 
 ### Rejestracja pluginu
 
-1. `powershell -File webcon-action\package.ps1 [-Sdk 2025|2026]` →
-   `webcon-action\Publish\WebconPdfSplitterAction-<linia BPS>-<wersja>.zip`,
-   np. `WebconPdfSplitterAction-2025r2-1.0.12.1.zip`
+1. `powershell -File webcon-action\package.ps1` →
+   `webcon-action\Publish\WebconPdfSplitterAction-<linia BPS>-<wersja>.zip`
    (DLL pluginu + Newtonsoft.Json.dll + manifest; biblioteki SDK dostarcza host BPS).
+
+   Domyślnie powstają **obie paczki z tym samym numerem wersji** —
+   `…-2025r2-1.0.12.19.zip` i `…-2026r1-1.0.12.19.zip` to ten sam kod, różnią się
+   wyłącznie linią SDK. Pojedynczą linię zbudujesz przez `-Sdk 2025` albo
+   `-Sdk 2026`, ale numer wersji i tak idzie w górę raz na uruchomienie.
+
    Skrypt sam podbija 4-częściową wersję (= wersja assembly); wersja jest też
-   w logu operacji (`SubmitSplitJobAction vX.Y.Z.W`).
+   w logu operacji (`SubmitSplitJobAction vX.Y.Z.W`) — to najszybszy sposób
+   sprawdzenia, która paczka faktycznie wykonała akcję.
 2. Designer Studio → **Plugin packages** → **New package** → wskaż ZIP → **Verify plugins**.
 
 ### Obieg paczki: kroki i pola
@@ -457,6 +463,13 @@ Rejestracja → Przetwarzanie → Podzielona
 - **Przetwarzanie**: akcja cykliczna `CollectSplitJobAction` (zalecany interwał
   ~1 min) + **akcja na timeout** (dozorca: po N minutach od daty zlecenia →
   ścieżka na Błąd; N ≈ 3× spodziewany czas największej paczki).
+
+  Dozorca jest jedynym bezpiecznikiem na awarię **trwałą** — zły token, literówka
+  w adresie, splitter wyłączony na stałe. Takie zlecenie nigdy się nie uda, a
+  licznik prób celowo nie rośnie przy błędach komunikacji (żeby restart kontenera
+  nie wywalał paczek na Błąd), więc bez dozorcy paczka próbowałaby bezterminowo.
+  Dlatego datę zlecenia ustawia akcja zlecająca **przed** wysyłką i nikt jej
+  później nie nadpisuje: udane ponowienie nie może cofać zegara dozorcy.
 - **Podzielona / Błąd**: kroki końcowe (Błąd z opisem w polu statusu).
 
 Pola na formularzu paczki (ID podaje się w konfiguracji obu akcji):
@@ -464,7 +477,7 @@ Pola na formularzu paczki (ID podaje się w konfiguracji obu akcji):
 | Pole | Typ | Rola |
 |---|---|---|
 | Job ID | tekst | Klucz zadania; korelacja z logiem kontenera (`[job=…]`) |
-| Data zlecenia | data i czas | Podstawa dla akcji na timeout (dozorcy) |
+| Data zlecenia | data i czas | Moment **wejścia paczki w przetwarzanie**; podstawa dla akcji na timeout (dozorcy) |
 | Status przetwarzania | tekst | Dla operatora: „3. w kolejce" / „8 dok., 2 do weryfikacji" / treść błędu |
 | Liczba prób | liczba | Ochrona przed pętlą ponowień (rośnie tylko przy `404`/`failed`, **nie** przy zajętości) |
 | Ostatni utworzony dokument | liczba | Wznawianie odbioru po awarii bez duplikatów (`documentIndex`) |
@@ -495,16 +508,22 @@ natychmiast wypchnięta ze starą wartością.
 
 | Pole | Wymagane | Opis / skąd wziąć |
 |---|---|---|
-| Splitter base URL | tak | Adres serwisu, np. `http://serwer:8010`. Osiągalny **z serwera WEBCON** (WorkflowService), nie z przeglądarki |
-| Splitter API token | zalecane | Ta sama wartość co `SPLITTER_API_TOKEN` |
-| Timeout in seconds | nie (300) | Limit HTTP — po zmianie na kolejkę wystarcza na sam transfer pliku |
-| Patterns data source ID | tak | Źródło danych z aktywnymi wzorcami (kolumny niżej) |
-| Job ID field ID | tak | Pole tekstowe na `jobId` |
-| Submitted at field ID | tak | Pole daty i czasu z momentem zlecenia |
-| Outcome field ID | tak | Pole tekstowe na `GOTOWE`/`BLAD` — wyzwalacz przejścia |
-| Status field ID | nie | Pole tekstowe na status dla operatora |
-| Attempts field ID | nie | Pole liczbowe z liczbą nieudanych prób |
-| Last created document index field ID | nie | Pole liczbowe do wznawiania odbioru |
+| Adres serwisu splittera | tak | Np. `http://serwer:8010`. Osiągalny **z serwera WEBCON** (WorkflowService), nie z przeglądarki |
+| Token API splittera | zalecane | Ta sama wartość co `SPLITTER_API_TOKEN` |
+| Limit czasu odpowiedzi (sekundy) | nie (300) | Limit HTTP — po zmianie na kolejkę wystarcza na sam transfer pliku |
+| Źródło danych ze wzorcami | tak | Źródło danych z aktywnymi wzorcami (kolumny niżej) |
+| Pole na identyfikator zadania | **tak** | Pole tekstowe na `jobId` |
+| Pole na datę zlecenia | **tak** | Pole daty i czasu; ustawiane w momencie **wejścia paczki w przetwarzanie** |
+| Pole na wynik przetwarzania | **tak** | Pole tekstowe na `GOTOWE`/`BLAD` — wyzwalacz przejścia |
+| Pole na status dla operatora | nie | Pole tekstowe na status dla operatora |
+| Pole na liczbę prób | nie | Pole liczbowe z liczbą nieudanych prób |
+| Pole na indeks ostatniego utworzonego dokumentu | nie | Pole liczbowe do wznawiania odbioru |
+
+Trzy pierwsze pola formularza są **wymagane i sprawdzane przez obie akcje** — brak
+któregokolwiek kończy akcję czytelnym błędem w logu operacji. Wcześniej sprawdzała
+je tylko akcja odbierająca, więc dało się wypełnić pole w jednej akcji, a w drugiej
+nie: zapis stawał się cichym no-opem i paczka wznowiona po `BLAD` natychmiast na ten
+`BLAD` wracała.
 
 ### Konfiguracja akcji „CollectSplitJobAction" (cykliczna na Przetwarzaniu)
 
@@ -512,13 +531,13 @@ Wszystkie pola powyżej (wspólna konfiguracja połączenia i pól paczki), plus
 
 | Pole | Wymagane | Opis |
 |---|---|---|
-| Target workflow ID | tak | Obieg, w którym powstają elementy Dokument HR |
-| Target document type ID | tak | Typ formularza elementów Dokument HR |
-| Start path ID | tak | Ścieżka startowa obiegu Dokument HR |
-| Requires review field ID | nie | Pole tak/nie na `requiresReview`; puste = pomijane |
-| Review reasons field ID | nie | Pole tekstowe (wieloliniowe) na powody. Ustawione → powody tylko do pola; puste → do komentarza elementu |
-| Parent element ID field ID | nie | Pole na ID elementu nadrzędnego; relacja systemowa rodzic–dziecko jest ustawiana zawsze |
-| Max attempts | nie (3) | Po ilu **nieudanych** próbach (`404`/`failed`) element dostaje `BLAD`. Zajętość (`503`) i brak połączenia się nie liczą |
+| ID obiegu docelowego (Dokument HR) | tak | Obieg, w którym powstają elementy Dokument HR |
+| ID typu formularza docelowego (Dokument HR) | tak | Typ formularza elementów Dokument HR |
+| ID ścieżki startowej (obieg Dokument HR) | tak | Ścieżka startowa obiegu Dokument HR |
+| Pole na flagę weryfikacji | nie | Pole tak/nie na `requiresReview`; puste = pomijane |
+| Pole na powody weryfikacji | nie | Pole tekstowe (wieloliniowe) na powody. Ustawione → powody tylko do pola; puste → do komentarza elementu |
+| Pole na ID elementu nadrzędnego | nie | Pole na ID elementu nadrzędnego; relacja systemowa rodzic–dziecko jest ustawiana zawsze |
+| Maksymalna liczba prób | nie (3) | Po ilu **nieudanych** próbach (`404`/`failed`) element dostaje `BLAD`. Zajętość (`503`) i brak połączenia się nie liczą |
 | Pomijaj sprawdzanie uprawnień | nie (włączone) | Konieczne dla akcji cyklicznej — patrz niżej |
 
 ### Kontekst wykonania: konto serwisowe, nie operator

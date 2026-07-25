@@ -6,47 +6,55 @@ namespace WebconPdfSplitterAction;
 // i odbierajacej. Wszystkie sa int? (patrz uwaga nizej: przy typie int
 // Designer Studio wysyla dla niewypelnionego pola pusty string i SDK
 // wywraca akcje jeszcze przed jej uruchomieniem).
+//
+// Kolejnosc: najpierw trzy pola WYMAGANE, potem opcjonalne. Wynik siedzial
+// wczesniej na koncu, za czterema opcjonalnymi, i przez to bywal przeoczany
+// przy konfiguracji - a jego pominiecie nie zglasza sie samo (SetFieldAsync
+// na pustym ID jest cichym no-opem). Od teraz pilnuje tego takze
+// SplitJobSubmitter.RequireFields, wolany przez OBIE akcje.
 public class SplitJobFieldsConfig : SplitterConnectionConfig
 {
     [ConfigEditableFormFieldID(
-        DisplayName = "Job ID field ID",
+        DisplayName = "Pole na identyfikator zadania",
         Description = "Pole tekstowe na identyfikator zadania zwrocony przez splitter. WYMAGANE.",
         Order = 20)]
     public int? JobIdFieldId { get; set; }
 
     [ConfigEditableFormFieldID(
-        DisplayName = "Submitted at field ID",
-        Description = "Pole daty i czasu z momentem zlecenia. Podstawa dla akcji na timeout. WYMAGANE.",
+        DisplayName = "Pole na date zlecenia",
+        Description = "Pole daty i czasu z momentem wejscia paczki w przetwarzanie. " +
+                      "Podstawa dla akcji na timeout (dozorcy), ktora wypycha zablokowana " +
+                      "paczke na Blad. WYMAGANE.",
         Order = 21)]
     public int? SubmittedAtFieldId { get; set; }
 
     [ConfigEditableFormFieldID(
-        DisplayName = "Status field ID",
-        Description = "Pole tekstowe na status dla operatora (pozycja w kolejce, tresc bledu). Puste = nie zapisuj.",
+        DisplayName = "Pole na wynik przetwarzania",
+        Description = "Pole tekstowe na wynik: '" + SplitJobOutcome.Done +
+                      "' albo '" + SplitJobOutcome.Error + "' (puste = jeszcze trwa). " +
+                      "Na tym polu opiera sie przejscie sciezka po stronie WEBCON. WYMAGANE.",
         Order = 22)]
+    public int? OutcomeFieldId { get; set; }
+
+    [ConfigEditableFormFieldID(
+        DisplayName = "Pole na status dla operatora",
+        Description = "Pole tekstowe na status (pozycja w kolejce, tresc bledu). Puste = nie zapisuj.",
+        Order = 23)]
     public int? StatusFieldId { get; set; }
 
     [ConfigEditableFormFieldID(
-        DisplayName = "Attempts field ID",
+        DisplayName = "Pole na liczbe prob",
         Description = "Pole liczbowe z liczba nieudanych prob (404/failed; zajetosc sie nie liczy). " +
                       "Puste = brak ochrony przed petla ponowien.",
-        Order = 23)]
+        Order = 24)]
     public int? AttemptsFieldId { get; set; }
 
     [ConfigEditableFormFieldID(
-        DisplayName = "Last created document index field ID",
+        DisplayName = "Pole na indeks ostatniego utworzonego dokumentu",
         Description = "Pole liczbowe: indeks ostatniego utworzonego dokumentu potomnego. " +
                       "Pozwala wznowic odbior po awarii bez duplikatow. Puste = brak wznawiania.",
-        Order = 24)]
-    public int? LastCreatedIndexFieldId { get; set; }
-
-    [ConfigEditableFormFieldID(
-        DisplayName = "Outcome field ID",
-        Description = "Pole tekstowe na wynik przetwarzania: '" + SplitJobOutcome.Done +
-                      "' albo '" + SplitJobOutcome.Error + "' (puste = jeszcze trwa). " +
-                      "Na tym polu opiera sie przejscie sciezka po stronie WEBCON. WYMAGANE.",
         Order = 25)]
-    public int? OutcomeFieldId { get; set; }
+    public int? LastCreatedIndexFieldId { get; set; }
 }
 
 /// <summary>

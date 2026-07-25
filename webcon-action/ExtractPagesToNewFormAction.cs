@@ -17,29 +17,25 @@ public class ExtractPagesToNewFormAction : CustomAction<ExtractPagesToNewFormAct
         var pluginVersion = typeof(ExtractPagesToNewFormAction).Assembly.GetName().Version?.ToString() ?? "?";
         try
         {
-            var targetWorkflowId = ParseId(Configuration.TargetWorkflowId, "Target workflow ID");
-            var targetDocTypeId = ParseId(Configuration.TargetDocTypeId, "Target document type ID");
-            var startPathId = ParseId(Configuration.StartPathId, "Start path ID");
+            var targetWorkflowId = ParseId(Configuration.TargetWorkflowId, "ID obiegu docelowego");
+            var targetDocTypeId = ParseId(Configuration.TargetDocTypeId, "ID typu formularza docelowego");
+            var startPathId = ParseId(Configuration.StartPathId, "ID sciezki startowej");
 
             var source = await AttachmentSourceHelper.GetSinglePdfInCategoriesAsync(
                 args, Configuration.AllowedCategories);
             var pdfContent = await source.GetContentAsync();
 
-            PageOpResult extractResult;
             PageOpResult? removeResult = null;
-            using (var httpClient = new System.Net.Http.HttpClient
-                   { Timeout = TimeSpan.FromSeconds(Configuration.TimeoutSeconds) })
-            {
-                var client = new SplitterClient(httpClient, Configuration.SplitterBaseUrl, Configuration.ApiToken);
-                extractResult = await client.ExtractPagesAsync(
+            var client = new SplitterClient(
+                Configuration.SplitterBaseUrl, Configuration.ApiToken, Configuration.TimeoutSeconds);
+            var extractResult = await client.ExtractPagesAsync(
+                source.FileName, new MemoryStream(pdfContent), Configuration.PageRange,
+                args.Context.CurrentDocument.ID);
+
+            if (Configuration.RemoveFromSource)
+                removeResult = await client.RemovePagesAsync(
                     source.FileName, new MemoryStream(pdfContent), Configuration.PageRange,
                     args.Context.CurrentDocument.ID);
-
-                if (Configuration.RemoveFromSource)
-                    removeResult = await client.RemovePagesAsync(
-                        source.FileName, new MemoryStream(pdfContent), Configuration.PageRange,
-                        args.Context.CurrentDocument.ID);
-            }
 
             var documentsManager = new DocumentsManager(args.Context);
             // jawne przypisania: konstruktor SDK ma kolejnosc (docTypeID, workFlowID),

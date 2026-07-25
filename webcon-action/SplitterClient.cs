@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 
@@ -16,15 +17,55 @@ public sealed class SplitterBusyException : Exception
 
 public sealed class SplitterClient
 {
+    /// <summary>
+    /// Jeden klient na proces, wspoldzielony przez wszystkie akcje.
+    ///
+    /// Tworzenie i zamykanie HttpClienta na kazde wywolanie zostawia port
+    /// wychodzacy w stanie TIME_WAIT na kilka minut (zabezpieczenie TCP przed
+    /// pomyleniem spoznionego pakietu z nowym polaczeniem). Akcja cykliczna
+    /// odpytuje co takt KAZDA paczke w kroku przetwarzania, wiec przy setkach
+    /// paczek to setki portow na minute z puli WSPOLNEJ dla calego serwera
+    /// WEBCON - konkurujacej z SQL-em i pozostalymi integracjami. Objaw
+    /// (losowe bledy polaczen w calym systemie) pojawia sie wtedy daleko od
+    /// przyczyny. Wspoldzielony klient utrzymuje polaczenie i uzywa go
+    /// ponownie, przy okazji zdejmujac handshake z kazdego odpytania.
+    ///
+    /// Timeout jest wlasciwoscia instancji, a instancja jest wspolna dla akcji
+    /// o roznych ustawieniach - dlatego klient nie ma wlasnego limitu, a czas
+    /// pilnuje CancellationTokenSource na kazde zadanie osobno.
+    /// </summary>
+    private static readonly HttpClient Shared = new HttpClient
+    {
+        Timeout = Timeout.InfiniteTimeSpan,
+    };
+
     private readonly HttpClient _httpClient;
     private readonly string _baseUrl;
     private readonly string? _apiToken;
+    private readonly TimeSpan _timeout;
 
-    public SplitterClient(HttpClient httpClient, string baseUrl, string? apiToken = null)
+    /// <param name="httpClient">
+    /// Wylacznie dla testow - produkcyjnie zostaje klient wspoldzielony.
+    /// </param>
+    public SplitterClient(
+        string baseUrl, string? apiToken, int timeoutSeconds, HttpClient? httpClient = null)
     {
-        _httpClient = httpClient;
+        _httpClient = httpClient ?? Shared;
         _baseUrl = baseUrl.TrimEnd('/');
         _apiToken = apiToken;
+        _timeout = TimeSpan.FromSeconds(timeoutSeconds);
+    }
+
+    /// <summary>
+    /// Wysyla zadanie z limitem czasu na CALA operacje (naglowki + tresc).
+    /// Domyslne HttpCompletionOption.ResponseContentRead sprawia, ze token
+    /// obejmuje takze pobieranie tresci - inaczej odbior duzego wyniku
+    /// wymykalby sie limitowi.
+    /// </summary>
+    private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request)
+    {
+        using var timeout = new CancellationTokenSource(_timeout);
+        return await _httpClient.SendAsync(request, timeout.Token);
     }
 
     public async Task<SubmitJobResponse> SubmitAsync(
@@ -43,7 +84,7 @@ public sealed class SplitterClient
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/api/split") { Content = content };
         ApplyHeaders(request, webconElementId);
 
-        using var response = await _httpClient.SendAsync(request);
+        using var response = await SendAsync(request);
         var body = await response.Content.ReadAsStringAsync();
         // 503 to poprawna praca pod obciazeniem, nie awaria - wolajacy ma
         // ponowic pozniej, a nie oznaczac element jako bledny
@@ -76,7 +117,7 @@ public sealed class SplitterClient
         using var request = new HttpRequestMessage(HttpMethod.Get, $"{_baseUrl}{path}");
         ApplyHeaders(request, null);
 
-        using var response = await _httpClient.SendAsync(request);
+        using var response = await SendAsync(request);
         var body = await response.Content.ReadAsStringAsync();
         // 404 znaczy "zadanie przepadlo" (restart kontenera albo TTL) -
         // wolajacy zleca ponownie, bo zrodlem prawdy jest zalacznik w WEBCONie
@@ -97,7 +138,7 @@ public sealed class SplitterClient
     {
         using var request = new HttpRequestMessage(HttpMethod.Delete, $"{_baseUrl}/api/jobs/{jobId}");
         ApplyHeaders(request, null);
-        using var response = await _httpClient.SendAsync(request);
+        using var response = await SendAsync(request);
         // brak zadania jest tu stanem docelowym, wiec 404 nie jest bledem
         if (!response.IsSuccessStatusCode
             && response.StatusCode != System.Net.HttpStatusCode.NotFound)
@@ -145,7 +186,7 @@ public sealed class SplitterClient
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}{path}") { Content = content };
         ApplyHeaders(request, webconElementId);
 
-        using var response = await _httpClient.SendAsync(request);
+        using var response = await SendAsync(request);
         var body = await response.Content.ReadAsStringAsync();
         // przekaz tresc bledu serwisu (HTTP 400 detail) do gornej warstwy, zeby operator wiedzial co poprawic
         if (!response.IsSuccessStatusCode)

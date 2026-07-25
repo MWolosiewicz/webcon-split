@@ -45,8 +45,7 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
 
     private async Task<string> HandleAsync(RunCustomActionParams args)
     {
-        SplitJobSubmitter.RequireJobIdField(Configuration);
-        RequireOutcomeField();
+        SplitJobSubmitter.RequireFields(Configuration);
 
         // Element z ustalonym wynikiem czeka juz tylko na przejscie sciezka
         // po stronie WEBCON - nie wolno go wtedy dotykac. Bez tej bramki
@@ -62,8 +61,8 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
             return await SplitJobSubmitter.SubmitAsync(
                 args, Configuration, Configuration.PatternsDataSourceId);
 
-        using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(Configuration.TimeoutSeconds) };
-        var client = new SplitterClient(httpClient, Configuration.SplitterBaseUrl, Configuration.ApiToken);
+        var client = new SplitterClient(
+            Configuration.SplitterBaseUrl, Configuration.ApiToken, Configuration.TimeoutSeconds);
 
         JobStatusResponse? status;
         try
@@ -144,14 +143,14 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
         // zadanie zakonczone bledem juz nas nie interesuje - bez tego
         // kasowania zostawaloby po stronie splittera do wygasniecia TTL,
         // a nikt by o nie wiecej nie zapytal
-        await client.DeleteJobAsync(jobId);
+        var cleanup = await TryDeleteJobAsync(client, jobId);
         if (attempts >= Configuration.MaxAttempts)
-            return await MarkErrorAsync(args, $"Zadanie {jobId} zakonczone bledem: {error}");
+            return await MarkErrorAsync(args, $"Zadanie {jobId} zakonczone bledem: {error}") + cleanup;
 
         await SplitJobSubmitter.SetFieldAsync(args, Configuration.JobIdFieldId, "");
         await SplitJobSubmitter.SetFieldAsync(
             args, Configuration.StatusFieldId, $"blad, ponowienie ({attempts}): {error}");
-        return $"Zadanie {jobId} zakonczone bledem, ponowienie (proba {attempts}): {error}";
+        return $"Zadanie {jobId} zakonczone bledem, ponowienie (proba {attempts}): {error}{cleanup}";
     }
 
     private async Task<string> CollectAsync(
@@ -161,9 +160,12 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
         if (result == null)
             return await HandleLostJobAsync(args, jobId);
 
-        var targetWorkflowId = ParseId(Configuration.TargetWorkflowId, "Target workflow ID");
-        var targetDocTypeId = ParseId(Configuration.TargetDocTypeId, "Target document type ID");
-        var startPathId = ParseId(Configuration.StartPathId, "Start path ID");
+        var targetWorkflowId = ParseId(
+            Configuration.TargetWorkflowId, "ID obiegu docelowego (Dokument HR)");
+        var targetDocTypeId = ParseId(
+            Configuration.TargetDocTypeId, "ID typu formularza docelowego (Dokument HR)");
+        var startPathId = ParseId(
+            Configuration.StartPathId, "ID sciezki startowej (obieg Dokument HR)");
         // wznowienie po awarii: pomijamy dokumenty utworzone w poprzednim podejsciu
         var lastCreated = SplitJobSubmitter.GetField(args, Configuration.LastCreatedIndexFieldId, 0);
 
@@ -231,7 +233,7 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
 
         // kasujemy zadanie DOPIERO po zapisaniu dzieci - inaczej pad
         // w polowie odbioru oznaczalby utrate wyniku
-        await client.DeleteJobAsync(jobId);
+        var cleanup = await TryDeleteJobAsync(client, jobId);
         await SplitJobSubmitter.SetFieldAsync(
             args, Configuration.StatusFieldId,
             $"{status.DocumentCount} dok., {status.DocumentsRequiringReview} do weryfikacji");
@@ -245,7 +247,7 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
             : "";
         return $"Zadanie {jobId}: {result.Status}, stron: {result.PageCount}, " +
                $"dokumentow: {result.Documents.Count}, utworzono elementy: " +
-               $"{string.Join(", ", createdIds)}{warningsText}";
+               $"{string.Join(", ", createdIds)}{warningsText}{cleanup}";
     }
 
     private async Task<string> MarkErrorAsync(RunCustomActionParams args, string reason)
@@ -256,13 +258,28 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
         return reason;
     }
 
-    private void RequireOutcomeField()
+    /// <summary>
+    /// Kasuje zadanie po stronie splittera, nigdy nie rzucajac.
+    ///
+    /// Sprzatanie jest skutkiem ubocznym, nie celem taktu. Wyjatek stad
+    /// przerywalby akcje PRZED zapisem wyniku, mimo ze dokumenty potomne juz
+    /// powstaly: paczka zostawalaby w przetwarzaniu, a nastepny takt zlecalby
+    /// ja od nowa i przemielil przez pelny OCR po raz drugi (dokumenty by sie
+    /// nie zdublowaly - chroni licznik ostatniego utworzonego - ale przy duzej
+    /// paczce to kilkanascie minut CPU za nic). Nieodebrane zadanie i tak
+    /// zniknie po TTL.
+    /// </summary>
+    private static async Task<string> TryDeleteJobAsync(SplitterClient client, string jobId)
     {
-        if (Configuration.OutcomeFieldId.GetValueOrDefault() <= 0)
-            throw new InvalidOperationException(
-                "Konfiguracja akcji wymaga wypelnionego pola 'Outcome field ID' - " +
-                "bez niego WEBCON nie ma na czym oprzec przejscia sciezka, " +
-                "a element utknalby w kroku przetwarzania.");
+        try
+        {
+            await client.DeleteJobAsync(jobId);
+            return "";
+        }
+        catch (Exception ex)
+        {
+            return $" Zadania {jobId} nie udalo sie skasowac ({ex.Message}) - wygasnie samo po TTL.";
+        }
     }
 
     private static int ParseId(string configuredValue, string fieldName)

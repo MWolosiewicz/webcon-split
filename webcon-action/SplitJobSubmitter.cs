@@ -27,24 +27,43 @@ namespace WebconPdfSplitterAction;
 public static class SplitJobSubmitter
 {
     /// <summary>
-    /// Pole na jobId jest technicznie opcjonalne (int?, bo Designer Studio
-    /// wywraca akcje na niewypelnionym polu typu int), ale bez niego kolejka
-    /// nie dziala: zapis jobId bylby cichym no-opem, wiec kazdy takt akcji
-    /// odbierajacej widzialby "brak zadania" i zlecal podzial od nowa -
-    /// pelny OCR calej paczki co minute, bezterminowo, bez zadnego bledu.
+    /// Sprawdza komplet pol, bez ktorych kolejka nie dziala. Wszystkie trzy sa
+    /// technicznie opcjonalne (int?, bo Designer Studio wywraca akcje na
+    /// niewypelnionym polu typu int), wiec pominiecie ktoregokolwiek nie
+    /// zglasza sie samo - zapis staje sie cichym no-opem.
+    ///
+    /// Wolane przez OBIE akcje celowo. Wczesniej wynik sprawdzala tylko akcja
+    /// odbierajaca, a zlecajaca milczala - mozna wiec bylo wypelnic pole
+    /// w jednej, a w drugiej nie i dostac paczke, ktora po wznowieniu z Bledu
+    /// natychmiast na ten Blad wraca (stara wartosc nie zostala wyczyszczona).
     /// </summary>
-    public static void RequireJobIdField(SplitJobFieldsConfig config)
+    public static void RequireFields(SplitJobFieldsConfig config)
     {
         if (config.JobIdFieldId.GetValueOrDefault() <= 0)
             throw new InvalidOperationException(
-                "Konfiguracja akcji wymaga wypelnionego pola 'Job ID field ID' - " +
-                "bez niego identyfikator zadania nie ma gdzie zostac zapisany.");
+                "Konfiguracja akcji wymaga wypelnionego pola 'Pole na identyfikator zadania' - " +
+                "bez niego identyfikator zadania nie ma gdzie zostac zapisany, wiec kazdy takt " +
+                "akcji odbierajacej widzialby 'brak zadania' i zlecal podzial od nowa: pelny OCR " +
+                "calej paczki co minute, bezterminowo, bez zadnego bledu.");
+
+        if (config.SubmittedAtFieldId.GetValueOrDefault() <= 0)
+            throw new InvalidOperationException(
+                "Konfiguracja akcji wymaga wypelnionego pola 'Pole na date zlecenia' - " +
+                "to jedyna podstawa dla akcji na timeout, ktora wypycha zablokowana paczke " +
+                "na Blad. Bez niej trwala awaria (zly token, zly adres) nie ma jak zostac " +
+                "zauwazona.");
+
+        if (config.OutcomeFieldId.GetValueOrDefault() <= 0)
+            throw new InvalidOperationException(
+                "Konfiguracja akcji wymaga wypelnionego pola 'Pole na wynik przetwarzania' - " +
+                "bez niego WEBCON nie ma na czym oprzec przejscia sciezka, a element utknalby " +
+                "w kroku przetwarzania.");
     }
 
     public static async Task<string> SubmitAsync(
         RunCustomActionParams args, SplitJobFieldsConfig config, int patternsDataSourceId)
     {
-        RequireJobIdField(config);
+        RequireFields(config);
         var elementId = args.Context.CurrentDocument.ID;
         var patterns = await LoadPatternsAsync(args, patternsDataSourceId);
         var patternsWarning = patterns.Count == 0
@@ -54,16 +73,20 @@ public static class SplitJobSubmitter
         var attachment = await GetSingleSourcePdfAsync(args);
         var pdfContent = await attachment.GetContentAsync();
 
-        using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(config.TimeoutSeconds) };
-        var client = new SplitterClient(httpClient, config.SplitterBaseUrl, config.ApiToken);
+        var client = new SplitterClient(
+            config.SplitterBaseUrl, config.ApiToken, config.TimeoutSeconds);
 
         try
         {
             var submitted = await client.SubmitAsync(
                 attachment.FileName, new MemoryStream(pdfContent), elementId, patterns);
 
+            // Daty zlecenia NIE ruszamy: ustawia ja akcja zlecajaca w momencie
+            // wejscia paczki w przetwarzanie i od tego momentu liczy czas
+            // dozorca. Odswiezanie jej przy kazdym udanym ponowieniu cofaloby
+            // jego zegar - paczka wpadajaca w petle 'zadanie przepadlo ->
+            // zlec ponownie' nigdy nie doczekalaby sie timeoutu.
             await SetFieldAsync(args, config.JobIdFieldId, submitted.JobId);
-            await SetFieldAsync(args, config.SubmittedAtFieldId, DateTime.Now);
             await SetFieldAsync(args, config.StatusFieldId,
                 submitted.Position > 0 ? $"{submitted.Position}. w kolejce" : "przetwarzanie");
 

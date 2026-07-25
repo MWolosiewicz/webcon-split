@@ -30,12 +30,25 @@ public class SubmitSplitJobAction : CustomAction<SubmitSplitJobActionConfig>
             // dokumentow: warunek documentIndex <= lastCreated przeskakiwalby
             // wszystkie dokumenty utworzone w poprzednim podejsciu, a paczka
             // konczylaby "pomyslnie" z zerem elementow potomnych.
+            SplitJobSubmitter.RequireFields(Configuration);
+
             await SplitJobSubmitter.SetFieldAsync(args, Configuration.AttemptsFieldId, 0);
             await SplitJobSubmitter.SetFieldAsync(args, Configuration.LastCreatedIndexFieldId, 0);
             // pole wyniku MUSI byc wyczyszczone: to na nim opiera sie przejscie
             // sciezka po stronie WEBCON, wiec pozostawiona wartosc BLAD albo
             // GOTOWE natychmiast wypchnelaby element z kroku przetwarzania
             await SplitJobSubmitter.SetFieldAsync(args, Configuration.OutcomeFieldId, "");
+
+            // Data PRZED wyslaniem, nie po udanym zleceniu. Dozorca (akcja na
+            // timeout) mierzy czas od wejscia paczki w przetwarzanie i tylko
+            // on potrafi wypchnac na Blad awarie trwala - zly token, literowke
+            // w adresie. Takie zlecenie nigdy sie nie udaje, wiec przy zapisie
+            // "po sukcesie" data zostawala pusta, warunek dozorcy nigdy nie byl
+            // spelniony i paczka probowala w kolko, bezterminowo. Jedyna
+            // sytuacja, w ktorej dozorca byl naprawde potrzebny, byla dokladnie
+            // ta, w ktorej nie dzialal.
+            await SplitJobSubmitter.SetFieldAsync(
+                args, Configuration.SubmittedAtFieldId, DateTime.Now);
 
             var message = await SplitJobSubmitter.SubmitAsync(
                 args, Configuration, Configuration.PatternsDataSourceId);
