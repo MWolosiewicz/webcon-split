@@ -2,6 +2,7 @@ import io
 import json
 
 import pytest
+from conftest import split_and_wait
 from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 
@@ -91,6 +92,8 @@ def _umowa_patterns_json() -> str:
 
 
 def test_split_uses_patterns_from_request(monkeypatch):
+    # transport przez kolejke zadan (202 + odbior wyniku); asercje
+    # klasyfikacji bez zmian
     monkeypatch.setattr(
         api,
         "build_ocr_engine",
@@ -98,30 +101,25 @@ def test_split_uses_patterns_from_request(monkeypatch):
             ["UMOWA O PRACE zawarta pomiedzy pracodawca a pracownikiem"]
         ),
     )
-    client = TestClient(app)
+    with TestClient(app) as client:
+        body = split_and_wait(
+            client,
+            files={"file": ("scan.pdf", io.BytesIO(_pdf_bytes()), "application/pdf")},
+            data={"patterns": _umowa_patterns_json()},
+        )
 
-    response = client.post(
-        "/api/split",
-        files={"file": ("scan.pdf", io.BytesIO(_pdf_bytes()), "application/pdf")},
-        data={"patterns": _umowa_patterns_json()},
-    )
-
-    assert response.status_code == 200
-    body = response.json()
     assert body["documents"][0]["documentType"] == "Umowa o prace"
     assert body["jobId"]
 
 
 def test_split_without_patterns_classifies_all_as_unknown():
-    client = TestClient(app)
+    with TestClient(app) as client:
+        body = split_and_wait(
+            client,
+            files={"file": ("scan.pdf", io.BytesIO(_pdf_bytes()), "application/pdf")},
+        )
 
-    response = client.post(
-        "/api/split",
-        files={"file": ("scan.pdf", io.BytesIO(_pdf_bytes()), "application/pdf")},
-    )
-
-    assert response.status_code == 200
-    assert response.json()["documents"][0]["documentType"] == "Nieznany typ dokumentu"
+    assert body["documents"][0]["documentType"] == "Nieznany typ dokumentu"
 
 
 def test_split_rejects_invalid_patterns_json():

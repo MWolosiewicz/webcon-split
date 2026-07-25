@@ -1,7 +1,7 @@
 import base64
 import io
 
-import pytest
+from conftest import split_and_wait
 from fastapi.testclient import TestClient
 from pypdf import PdfReader, PdfWriter
 
@@ -21,15 +21,12 @@ def _pdf_bytes(page_count: int) -> bytes:
 
 
 def test_split_returns_documents_with_file_content():
-    client = TestClient(app)
+    with TestClient(app) as client:
+        payload = split_and_wait(
+            client,
+            files={"file": ("scan.pdf", io.BytesIO(_pdf_bytes(2)), "application/pdf")},
+        )
 
-    response = client.post(
-        "/api/split",
-        files={"file": ("scan.pdf", io.BytesIO(_pdf_bytes(2)), "application/pdf")},
-    )
-
-    assert response.status_code == 200
-    payload = response.json()
     assert payload["pageCount"] == 2
     assert len(payload["documents"]) >= 1
     content = base64.b64decode(payload["documents"][0]["fileContentBase64"])
@@ -50,33 +47,35 @@ def test_split_rejects_missing_token_when_token_configured(monkeypatch):
     assert response.status_code == 401
 
 
-def test_split_accepts_valid_token(monkeypatch):
+def test_split_accepts_valid_token(monkeypatch, tmp_path):
+    # work_dir jawnie w tmp: lifespan startuje z TYMI ustawieniami i zamiata
+    # work_dir, wiec nie moze uzyc domyslnego ./work
     monkeypatch.setattr(
-        api, "get_settings", lambda: SplitterSettings(_env_file=None, api_token="sekret")
+        api,
+        "get_settings",
+        lambda: SplitterSettings(
+            _env_file=None, api_token="sekret", work_dir=str(tmp_path / "work")
+        ),
     )
-    client = TestClient(app)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/split",
+            headers={"Authorization": "Bearer sekret"},
+            files={"file": ("scan.pdf", io.BytesIO(_pdf_bytes(1)), "application/pdf")},
+        )
 
-    response = client.post(
-        "/api/split",
-        headers={"Authorization": "Bearer sekret"},
-        files={"file": ("scan.pdf", io.BytesIO(_pdf_bytes(1)), "application/pdf")},
-    )
-
-    assert response.status_code == 200
+        assert response.status_code == 202
 
 
 def test_default_configuration_removes_nothing():
     # REGRESJA INCYDENTU: domyslna konfiguracja (tryb keep) nie moze usunac
     # zadnej strony, nawet gdy caly PDF to biale kartki
-    client = TestClient(app)
+    with TestClient(app) as client:
+        payload = split_and_wait(
+            client,
+            files={"file": ("scan.pdf", io.BytesIO(_pdf_bytes(3)), "application/pdf")},
+        )
 
-    response = client.post(
-        "/api/split",
-        files={"file": ("scan.pdf", io.BytesIO(_pdf_bytes(3)), "application/pdf")},
-    )
-
-    assert response.status_code == 200
-    payload = response.json()
     assert payload["pageCount"] == 3
     assert all(document["removedPages"] == [] for document in payload["documents"])
     covered = sum(

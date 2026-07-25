@@ -42,6 +42,23 @@ class SplitResult(BaseModel):
     jobId: str | None = None
 
 
+class SubmitJobResponse(BaseModel):
+    jobId: str
+    position: int
+
+
+class JobStatusResponse(BaseModel):
+    jobId: str
+    status: str
+    position: int = 0
+    runningSeconds: float = 0.0
+    pageCount: int = 0
+    documentCount: int = 0
+    documentsRequiringReview: int = 0
+    warnings: list[str] = Field(default_factory=list)
+    error: str | None = None
+
+
 class PageOpResult(BaseModel):
     outputFileName: str
     pageCount: int = Field(ge=0)

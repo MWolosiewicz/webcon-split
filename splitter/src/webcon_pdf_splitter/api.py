@@ -1,19 +1,27 @@
 import base64
 import io
 import logging
+import shutil
 import time
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import uuid4
 
-from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, Response, UploadFile
+from fastapi.responses import JSONResponse
 from pypdf import PdfReader
 
 from webcon_pdf_splitter import metrics
 from webcon_pdf_splitter.config import SplitterSettings
-from webcon_pdf_splitter.contracts import PageOpResult, SplitResult
+from webcon_pdf_splitter.contracts import (
+    JobStatusResponse,
+    PageOpResult,
+    SplitResult,
+    SubmitJobResponse,
+)
+from webcon_pdf_splitter.jobs import Job, JobStore, JobWorker, QueueFullError
 from webcon_pdf_splitter.pdf_io import (
     extract_pages,
     merge_pdfs,
@@ -67,7 +75,114 @@ def configure_logging(settings: SplitterSettings) -> None:
 
 configure_logging(get_settings())
 
-app = FastAPI(title="WEBCON PDF Splitter")
+
+# Kolejka i workery zyja w pamieci procesu i powstaja w lifespan - swiadomie
+# bez trwalego magazynu: zrodlem prawdy jest zalacznik w WEBCONie, wiec po
+# restarcie kontenera nieznane zadanie (404) prowadzi do ponownego zlecenia.
+_job_store: JobStore | None = None
+_workers: list[JobWorker] = []
+
+
+def get_job_store() -> JobStore:
+    if _job_store is None:
+        raise RuntimeError("Kolejka zadan nie zostala uruchomiona")
+    return _job_store
+
+
+def run_job(job: Job) -> SplitResult:
+    """Wykonanie zadania w watku roboczym - z kontekstem logu i metryk."""
+    settings = get_settings()
+    started = time.perf_counter()
+    with job_log_context(job.job_id), metrics.request_collector() as request_metrics:
+        logger.info(
+            "Start przetwarzania '%s' (webconElementId=%s)",
+            job.filename,
+            job.element_id,
+        )
+        # ocr wstrzykniety jawnie (a nie budowany wewnatrz process()),
+        # zeby monkeypatch build_ocr_engine w testach nadal dzialal na
+        # warstwie HTTP - patrz test_split_patterns.py
+        result = process(
+            settings,
+            job.source_path,
+            job.filename,
+            job.patterns_field,
+            ocr=build_ocr_engine(settings),
+        )
+        request_metrics.pages = result.pageCount
+        request_metrics.documents = len(result.documents)
+        request_metrics.documents_requiring_review = sum(
+            1 for document in result.documents if document.requiresReview
+        )
+        request_metrics.duration_seconds = time.perf_counter() - started
+        metrics.registry.record(request_metrics)
+        logger.info(
+            "Metryki zadania: %s stron (OCR: %s), wywolania LLM: %s, "
+            "dokumenty: %s (weryfikacja: %s), czas %.1f s",
+            request_metrics.pages,
+            request_metrics.ocr_pages,
+            request_metrics.llm_calls,
+            request_metrics.documents,
+            request_metrics.documents_requiring_review,
+            request_metrics.duration_seconds,
+        )
+    # identyfikator korelacyjny: akcja WEBCON zapisuje go w logu operacji
+    result.jobId = job.job_id
+    return result
+
+
+def _sweep_work_dir(settings: SplitterSettings) -> None:
+    """Kasuje pliki po poprzednim wcieleniu kontenera.
+
+    Kolejka zyje w pamieci, wiec po restarcie zadne z tych zadan juz nie
+    istnieje - ich pliki zostalyby na dysku na zawsze. work_dir jest
+    katalogiem wylacznie serwisu (patrz Dockerfile/README), stad zamiatamy
+    calosc.
+    """
+    work_dir = Path(settings.work_dir)
+    if not work_dir.exists():
+        return
+    for leftover in work_dir.iterdir():
+        try:
+            if leftover.is_dir():
+                shutil.rmtree(leftover, ignore_errors=True)
+            else:
+                leftover.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Nie udalo sie usunac %s", leftover, exc_info=True)
+
+
+@asynccontextmanager
+async def lifespan(app_instance: FastAPI):
+    global _job_store
+    settings = get_settings()
+    _sweep_work_dir(settings)
+    Path(settings.work_dir).mkdir(parents=True, exist_ok=True)
+    _job_store = JobStore(
+        max_queue_size=settings.max_queue_size,
+        result_ttl_seconds=settings.job_result_ttl_seconds,
+    )
+    for index in range(max(1, settings.worker_count)):
+        # lambda z globalnym lookupem run_job - podmiana api.run_job
+        # w testach dziala takze dla juz wystartowanych workerow
+        worker = JobWorker(
+            _job_store,
+            processor=lambda job: run_job(job),
+            name=f"job-worker-{index + 1}",
+        )
+        worker.start()
+        _workers.append(worker)
+    logger.info("Kolejka zadan uruchomiona (workerow: %s)", len(_workers))
+    yield
+    for worker in _workers:
+        worker.stop()
+    for worker in _workers:
+        worker.join(timeout=5)
+    _workers.clear()
+    _job_store = None
+
+
+app = FastAPI(title="WEBCON PDF Splitter", lifespan=lifespan)
 
 
 def _require_token(settings: SplitterSettings, authorization: str | None) -> None:
@@ -126,67 +241,119 @@ def metrics_endpoint(authorization: str | None = Header(default=None)) -> dict:
     return metrics.registry.snapshot()
 
 
-@app.post("/api/split", response_model=SplitResult)
+@app.post("/api/split", response_model=SubmitJobResponse, status_code=202)
 async def split_pdf_endpoint(
     file: UploadFile = File(...),
     patterns: str | None = Form(default=None),
     authorization: str | None = Header(default=None),
     webcon_element_id: int | None = Header(default=None, alias="X-Webcon-Element-Id"),
-) -> SplitResult:
+):
     settings = get_settings()
     _require_token(settings, authorization)
 
     filename = _normalize_upload_filename(file.filename)
     if not filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
-
-    job_id = str(uuid4())
-    started = time.perf_counter()
-    with job_log_context(job_id), metrics.request_collector() as request_metrics:
-        logger.info(
-            "Przyjeto '%s' do podzialu (jobId=%s, webconElementId=%s)",
-            filename,
-            job_id,
-            webcon_element_id,
-        )
-        result = await _split(settings, file, patterns, filename)
-        request_metrics.pages = result.pageCount
-        request_metrics.documents = len(result.documents)
-        request_metrics.documents_requiring_review = sum(
-            1 for document in result.documents if document.requiresReview
-        )
-        request_metrics.duration_seconds = time.perf_counter() - started
-        metrics.registry.record(request_metrics)
-        logger.info(
-            "Metryki zadania: %s stron (OCR: %s), wywolania LLM: %s, "
-            "dokumenty: %s (weryfikacja: %s), czas %.1f s",
-            request_metrics.pages,
-            request_metrics.ocr_pages,
-            request_metrics.llm_calls,
-            request_metrics.documents,
-            request_metrics.documents_requiring_review,
-            request_metrics.duration_seconds,
-        )
-    # identyfikator korelacyjny: akcja WEBCON zapisuje go w logu operacji
-    result.jobId = job_id
-    return result
-
-
-async def _split(
-    settings: SplitterSettings, file: UploadFile, patterns_field: str | None, filename: str
-) -> SplitResult:
-    with TemporaryDirectory(dir=settings.work_dir if Path(settings.work_dir).exists() else None) as tmp:
-        source_path = Path(tmp) / filename
-        source_path.write_bytes(await file.read())
+    # wzorce parsujemy od razu: to blad konfiguracji, tani do wykrycia,
+    # a zwrocony jako 400 trafia wprost do logu operacji akcji WEBCON;
+    # walidacja samego PDF-a biegnie w workerze (status failed)
+    if patterns is not None:
         try:
-            # ocr wstrzykniety jawnie (a nie budowany wewnatrz process()),
-            # zeby monkeypatch build_ocr_engine w testach nadal dzialal na
-            # warstwie HTTP - patrz test_split_patterns.py
-            return process(settings, str(source_path), filename, patterns_field, ocr=build_ocr_engine(settings))
+            parse_patterns_field(patterns)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    work_dir = Path(settings.work_dir)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    source_path = work_dir / f"{uuid4().hex}_{filename}"
+    source_path.write_bytes(await file.read())
+
+    store = get_job_store()
+    try:
+        job, created = store.submit(
+            element_id=webcon_element_id,
+            source_path=str(source_path),
+            filename=filename,
+            patterns_field=patterns,
+        )
+    except QueueFullError as exc:
+        source_path.unlink(missing_ok=True)
+        return JSONResponse(
+            status_code=503,
+            content={"detail": str(exc)},
+            headers={"Retry-After": "60"},
+        )
+    if not created:
+        # zadanie dla tego elementu juz biegnie - swiezy upload jest zbedny
+        source_path.unlink(missing_ok=True)
+        logger.info(
+            "Element %s ma juz aktywne zadanie %s - zlecenie pominiete",
+            webcon_element_id,
+            job.job_id,
+        )
+    else:
+        logger.info(
+            "Przyjeto '%s' do kolejki (jobId=%s, webconElementId=%s)",
+            filename,
+            job.job_id,
+            webcon_element_id,
+        )
+    return SubmitJobResponse(jobId=job.job_id, position=store.position(job.job_id))
+
+
+def _require_job(job_id: str) -> Job:
+    job = get_job_store().get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Nieznane zadanie")
+    return job
+
+
+@app.get("/api/jobs/{job_id}", response_model=JobStatusResponse)
+def job_status_endpoint(
+    job_id: str, authorization: str | None = Header(default=None)
+) -> JobStatusResponse:
+    _require_token(get_settings(), authorization)
+    job = _require_job(job_id)
+    result = job.result
+    return JobStatusResponse(
+        jobId=job.job_id,
+        status=job.status,
+        position=get_job_store().position(job.job_id),
+        runningSeconds=job.running_seconds,
+        pageCount=result.pageCount if result else 0,
+        documentCount=len(result.documents) if result else 0,
+        documentsRequiringReview=(
+            sum(1 for document in result.documents if document.requiresReview)
+            if result
+            else 0
+        ),
+        warnings=result.warnings if result else [],
+        error=job.error,
+    )
+
+
+@app.get("/api/jobs/{job_id}/result", response_model=SplitResult)
+def job_result_endpoint(
+    job_id: str, authorization: str | None = Header(default=None)
+) -> SplitResult:
+    _require_token(get_settings(), authorization)
+    job = _require_job(job_id)
+    if job.status != "done" or job.result is None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Zadanie nie jest zakonczone (status: {job.status})",
+        )
+    return job.result
+
+
+@app.delete("/api/jobs/{job_id}", status_code=204)
+def job_delete_endpoint(
+    job_id: str, authorization: str | None = Header(default=None)
+) -> Response:
+    _require_token(get_settings(), authorization)
+    if not get_job_store().delete(job_id):
+        raise HTTPException(status_code=404, detail="Nieznane zadanie")
+    return Response(status_code=204)
 
 
 @app.post("/api/pages/remove", response_model=PageOpResult)

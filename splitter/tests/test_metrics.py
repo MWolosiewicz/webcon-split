@@ -118,16 +118,25 @@ def test_llm_classifier_counts_calls(monkeypatch):
 
 
 def test_split_updates_metrics_endpoint_and_logs_summary(caplog):
+    # metryki zapisuje watek roboczy - przed odczytem /metrics czekamy
+    # na zakonczenie zadania (transport 202 + odpytywanie)
+    import time
+
     caplog.set_level(logging.INFO, logger="webcon_pdf_splitter.api")
-    client = TestClient(api.app)
+    with TestClient(api.app) as client:
+        response = client.post(
+            "/api/split",
+            files={"file": ("paczka.pdf", _single_blank_page_pdf_bytes(), "application/pdf")},
+        )
+        assert response.status_code == 202
+        job_id = response.json()["jobId"]
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            if client.get(f"/api/jobs/{job_id}").json()["status"] in ("done", "failed"):
+                break
+            time.sleep(0.02)
 
-    response = client.post(
-        "/api/split",
-        files={"file": ("paczka.pdf", _single_blank_page_pdf_bytes(), "application/pdf")},
-    )
-    assert response.status_code == 200
-
-    snapshot = client.get("/metrics").json()
+        snapshot = client.get("/metrics").json()
     assert snapshot["split_requests_total"] == 1
     assert snapshot["pages_total"] == 1
     assert snapshot["documents_total"] == 1

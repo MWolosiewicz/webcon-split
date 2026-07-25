@@ -129,17 +129,29 @@ def test_remove_pages_accepts_dotnet_rfc2047_polish_filename():
 
 
 def test_split_accepts_dotnet_rfc2047_polish_filename():
-    client = TestClient(app)
+    # dekodowanie nazwy dzieje sie przy zleceniu; zdekodowana nazwa jest
+    # widoczna w wyniku zadania (transport 202 + odbior)
+    import time
+
     boundary = "testboundary456"
     body = (
         f"--{boundary}\r\nContent-Type: application/pdf\r\n{_DOTNET_DISPOSITION}\r\n\r\n".encode()
         + _pdf_bytes(2)
         + f"\r\n--{boundary}--\r\n".encode()
     )
-    response = client.post(
-        "/api/split",
-        content=body,
-        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
-    )
-    assert response.status_code == 200
-    assert response.json()["sourceFileName"] == "zaświadczenie_łąka Żółć.pdf"
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/split",
+            content=body,
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        )
+        assert response.status_code == 202
+        job_id = response.json()["jobId"]
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            if client.get(f"/api/jobs/{job_id}").json()["status"] in ("done", "failed"):
+                break
+            time.sleep(0.02)
+        result = client.get(f"/api/jobs/{job_id}/result").json()
+
+    assert result["sourceFileName"] == "zaświadczenie_łąka Żółć.pdf"
