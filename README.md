@@ -890,6 +890,8 @@ uruchamia się ręcznie przeciw lokalnemu modelowi (poza pytest) do strojenia pr
 | `splitter/src/webcon_pdf_splitter/` | Kod serwisu (moduły opisane niżej) |
 | `splitter/docs/llm-prompt.md` | Manual placeholderów promptu LLM |
 | `webcon-action/` | Plugin C# (BPS 2026/2025 SDK, przełącznik `-Sdk`) + `package.ps1` budujący ZIP |
+| [`docs/instrukcja-slownika-typow-dokumentow.md`](docs/instrukcja-slownika-typow-dokumentow.md) | Instrukcja dla osoby prowadzącej słownik typów dokumentów |
+| [`docs/instrukcja-aktualizacji-kontenera-testowego.md`](docs/instrukcja-aktualizacji-kontenera-testowego.md) | Odtworzenie kontenera `splitter-test` (port 8011) na kod z gałęzi |
 | `docs/superpowers/` | Historia projektowa: specyfikacje i plany (migawki dzienne, nie bieżąca dokumentacja) |
 
 ### Moduły serwisu (`splitter/src/webcon_pdf_splitter/`)
