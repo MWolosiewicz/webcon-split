@@ -519,6 +519,25 @@ Wszystkie pola powyżej (wspólna konfiguracja połączenia i pól paczki), plus
 | Review reasons field ID | nie | Pole tekstowe (wieloliniowe) na powody. Ustawione → powody tylko do pola; puste → do komentarza elementu |
 | Parent element ID field ID | nie | Pole na ID elementu nadrzędnego; relacja systemowa rodzic–dziecko jest ustawiana zawsze |
 | Max attempts | nie (3) | Po ilu **nieudanych** próbach (`404`/`failed`) element dostaje `BLAD`. Zajętość (`503`) i brak połączenia się nie liczą |
+| Pomijaj sprawdzanie uprawnień | nie (włączone) | Konieczne dla akcji cyklicznej — patrz niżej |
+
+### Kontekst wykonania: konto serwisowe, nie operator
+
+Akcja na przejściu ścieżką dziedziczy kontekst klikającego użytkownika. Akcja
+**cykliczna** działa jako konto serwisowe WEBCON, które zwykle nie ma
+przypisanej spółki ani prawa startowania elementów. Bez uwzględnienia tego
+tworzenie dokumentów potomnych kończy się:
+
+```
+SDKSecurityException: Nieprawidłowy identyfikator spółki lub użytkownik
+nie ma uprawnień do startowania elementów workflow z wybranej spółki.
+```
+
+`CollectSplitJobAction` rozwiązuje to dwojako: **dziedziczy `CompanyID` po
+paczce** (dokument potomny należy do tej samej spółki co jego źródło) i
+przekazuje `SkipPermissionsCheck` do `GetNewDocumentAsync` oraz
+`StartNewWorkFlowAsync`. Przełącznik jest domyślnie włączony — wyłącz go tylko
+wtedy, gdy konto serwisowe ma nadane realne uprawnienia w docelowej spółce.
 
 Logika taktu `CollectSplitJobAction`: brak `jobId` → zleca (wspólna ścieżka dla
 `503`, błędu sieci, `404` i wygasłego wyniku); `queued`/`running` → aktualizuje

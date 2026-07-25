@@ -177,12 +177,22 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
 
             // jawne przypisania: konstruktor SDK ma kolejnosc (docTypeID, workFlowID),
             // latwo o pomylke pozycyjna
+            //
+            // CompanyID i SkipPermissionsCheck sa KONIECZNE w akcji cyklicznej.
+            // Akcja na przejsciu sciezka dziedziczyla kontekst klikajacego
+            // uzytkownika; tutaj wykonawca jest konto serwisowe, ktore zwykle
+            // nie ma przypisanej spolki ani prawa startowania elementow - bez
+            // tych dwoch pol SDK odrzuca utworzenie dokumentu wyjatkiem
+            // CompaniesForbiddenException. Spolke dziedziczymy po paczce, bo
+            // dokument potomny nalezy do tej samej spolki co jego zrodlo.
             var newDocument = await documentsManager.GetNewDocumentAsync(
                 new GetNewDocumentParams
                 {
                     WorkFlowID = targetWorkflowId,
                     DocTypeID = targetDocTypeId,
                     ParentDocumentID = args.Context.CurrentDocument.ID,
+                    CompanyID = args.Context.CurrentDocument.CompanyID,
+                    SkipPermissionsCheck = Configuration.SkipPermissionsCheck,
                 });
 
             if (!string.IsNullOrEmpty(detected.FileContentBase64))
@@ -205,8 +215,13 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
                 await newDocument.SetFieldValueAsync(
                     parentElementIdFieldId, args.Context.CurrentDocument.ID);
 
+            // ten sam powod co przy GetNewDocumentAsync - start obiegu tez
+            // przechodzi przez kontrole uprawnien konta serwisowego
             var started = await documentsManager.StartNewWorkFlowAsync(
-                new StartNewWorkFlowParams(newDocument, startPathId));
+                new StartNewWorkFlowParams(newDocument, startPathId)
+                {
+                    SkipPermissionsCheck = Configuration.SkipPermissionsCheck,
+                });
             createdIds.Add(started.CreatedDocumentID);
             // zapisujemy po KAZDYM dziecku - pad w polowie petli nie moze
             // spowodowac duplikatow przy nastepnym takcie

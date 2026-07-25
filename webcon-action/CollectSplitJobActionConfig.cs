@@ -56,6 +56,16 @@ public class CollectSplitJobActionConfig : SplitJobFieldsConfig
         Order = 35)]
     public int? ParentElementIdFieldId { get; set; }
 
+    [ConfigEditableBool(
+        DisplayName = "Pomijaj sprawdzanie uprawnien przy tworzeniu dokumentow",
+        Description = "Zalecane WLACZONE dla akcji cyklicznej. Akcja dziala jako konto " +
+                      "serwisowe WEBCON, ktore zwykle nie ma uprawnien do startowania " +
+                      "elementow w spolce paczki - wylaczone konczy sie bledem " +
+                      "'uzytkownik nie ma uprawnien do startowania elementow workflow'. " +
+                      "Obieg docelowy i tak wskazujesz w konfiguracji powyzej.",
+        Order = 39)]
+    public bool SkipPermissionsCheck { get; set; } = true;
+
     [ConfigEditableInteger(
         DisplayName = "Max attempts",
         Description = "Po ilu NIEUDANYCH probach (404 lub failed) element jest oznaczany jako bledny. " +
