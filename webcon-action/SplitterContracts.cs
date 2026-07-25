@@ -25,7 +25,25 @@ public sealed class DetectedDocument
     public string? FileContentBase64 { get; set; }
     public List<string> Signals { get; set; } = new();
     public List<int> RemovedPages { get; set; } = new();
-    public Dictionary<string, object> Metadata { get; set; } = new();
+}
+
+public sealed class SubmitJobResponse
+{
+    public string JobId { get; set; } = "";
+    public int Position { get; set; }
+}
+
+public sealed class JobStatusResponse
+{
+    public string JobId { get; set; } = "";
+    public string Status { get; set; } = "";
+    public int Position { get; set; }
+    public double RunningSeconds { get; set; }
+    public int PageCount { get; set; }
+    public int DocumentCount { get; set; }
+    public int DocumentsRequiringReview { get; set; }
+    public List<string> Warnings { get; set; } = new();
+    public string? Error { get; set; }
 }
 
 public sealed class PatternPayload

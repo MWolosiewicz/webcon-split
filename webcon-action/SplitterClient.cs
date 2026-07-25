@@ -8,6 +8,12 @@ using Newtonsoft.Json;
 
 namespace WebconPdfSplitterAction;
 
+/// <summary>Serwis chwilowo zajety (kolejka pelna) - to nie jest blad elementu.</summary>
+public sealed class SplitterBusyException : Exception
+{
+    public SplitterBusyException(string message) : base(message) { }
+}
+
 public sealed class SplitterClient
 {
     private readonly HttpClient _httpClient;
@@ -21,7 +27,7 @@ public sealed class SplitterClient
         _apiToken = apiToken;
     }
 
-    public async Task<SplitResult> SplitAsync(
+    public async Task<SubmitJobResponse> SubmitAsync(
         string fileName,
         Stream pdfStream,
         int? webconElementId = null,
@@ -35,17 +41,56 @@ public sealed class SplitterClient
             content.Add(new StringContent(JsonConvert.SerializeObject(patterns)), "patterns");
 
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/api/split") { Content = content };
-        if (!string.IsNullOrEmpty(_apiToken))
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
-        if (webconElementId.HasValue)
-            request.Headers.Add("X-Webcon-Element-Id", webconElementId.Value.ToString());
+        ApplyHeaders(request, webconElementId);
 
         using var response = await _httpClient.SendAsync(request);
         var body = await response.Content.ReadAsStringAsync();
-        response.EnsureSuccessStatusCode();
+        // 503 to poprawna praca pod obciazeniem, nie awaria - wolajacy ma
+        // ponowic pozniej, a nie oznaczac element jako bledny
+        if ((int)response.StatusCode == 503)
+            throw new SplitterBusyException($"Kolejka splittera jest pelna: {body}");
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Splitter returned {(int)response.StatusCode}: {body}");
 
-        return JsonConvert.DeserializeObject<SplitResult>(body)
+        return JsonConvert.DeserializeObject<SubmitJobResponse>(body)
             ?? throw new InvalidOperationException("Splitter returned empty response.");
+    }
+
+    public Task<JobStatusResponse?> GetJobStatusAsync(string jobId)
+        => GetOrNullAsync<JobStatusResponse>($"/api/jobs/{jobId}");
+
+    public Task<SplitResult?> GetJobResultAsync(string jobId)
+        => GetOrNullAsync<SplitResult>($"/api/jobs/{jobId}/result");
+
+    private async Task<T?> GetOrNullAsync<T>(string path) where T : class
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{_baseUrl}{path}");
+        ApplyHeaders(request, null);
+
+        using var response = await _httpClient.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+        // 404 znaczy "zadanie przepadlo" (restart kontenera albo TTL) -
+        // wolajacy zleca ponownie, bo zrodlem prawdy jest zalacznik w WEBCONie
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return null;
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Splitter returned {(int)response.StatusCode}: {body}");
+
+        return JsonConvert.DeserializeObject<T>(body);
+    }
+
+    public async Task DeleteJobAsync(string jobId)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Delete, $"{_baseUrl}/api/jobs/{jobId}");
+        ApplyHeaders(request, null);
+        using var response = await _httpClient.SendAsync(request);
+        // brak zadania jest tu stanem docelowym, wiec 404 nie jest bledem
+        if (!response.IsSuccessStatusCode
+            && response.StatusCode != System.Net.HttpStatusCode.NotFound)
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            throw new InvalidOperationException($"Splitter returned {(int)response.StatusCode}: {body}");
+        }
     }
 
     public Task<PageOpResult> RemovePagesAsync(
@@ -84,10 +129,7 @@ public sealed class SplitterClient
         string path, MultipartFormDataContent content, int? webconElementId)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}{path}") { Content = content };
-        if (!string.IsNullOrEmpty(_apiToken))
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
-        if (webconElementId.HasValue)
-            request.Headers.Add("X-Webcon-Element-Id", webconElementId.Value.ToString());
+        ApplyHeaders(request, webconElementId);
 
         using var response = await _httpClient.SendAsync(request);
         var body = await response.Content.ReadAsStringAsync();
@@ -97,5 +139,13 @@ public sealed class SplitterClient
 
         return JsonConvert.DeserializeObject<T>(body)
             ?? throw new InvalidOperationException("Splitter returned empty response.");
+    }
+
+    private void ApplyHeaders(HttpRequestMessage request, int? webconElementId)
+    {
+        if (!string.IsNullOrEmpty(_apiToken))
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
+        if (webconElementId.HasValue)
+            request.Headers.Add("X-Webcon-Element-Id", webconElementId.Value.ToString());
     }
 }
