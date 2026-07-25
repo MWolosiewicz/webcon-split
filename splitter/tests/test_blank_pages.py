@@ -1,6 +1,6 @@
 from PIL import Image, ImageDraw
 
-from webcon_pdf_splitter.blank_pages import ink_ratio
+from webcon_pdf_splitter.blank_pages import BlankPageDetector, ink_ratio
 
 
 def _white(width=500, height=700):
@@ -44,3 +44,47 @@ def test_ink_ratio_of_speckle_stays_below_default_threshold():
         draw.point((x, 350), fill="black")
 
     assert 0 < ink_ratio(image) < 0.002
+
+
+def _pdf_with_pages(tmp_path, images, name="scan.pdf"):
+    path = tmp_path / name
+    images[0].save(str(path), "PDF", save_all=True, append_images=images[1:])
+    return str(path)
+
+
+def test_detects_blank_page_and_keeps_page_with_content(tmp_path):
+    blank = _white(500, 700)
+    card = _white(500, 700)
+    # kartonik dowodu osobistego: ciemny prostokat na srodku strony
+    ImageDraw.Draw(card).rectangle([100, 250, 400, 450], fill="black")
+    path = _pdf_with_pages(tmp_path, [blank, card])
+
+    detector = BlankPageDetector(dpi=60, max_ink_ratio=0.002)
+
+    assert detector.detect_blank_pages(path, [0, 1]) == {0}
+
+
+def test_empty_index_list_returns_empty_set():
+    assert BlankPageDetector().detect_blank_pages("nieistniejacy.pdf", []) == set()
+
+
+def test_unreadable_pdf_yields_no_blank_pages(tmp_path):
+    # zasada bezpieczenstwa: nie umiemy ocenic -> zadna strona nie jest pusta
+    path = tmp_path / "broken.pdf"
+    path.write_bytes(b"to nie jest plik pdf")
+
+    assert BlankPageDetector().detect_blank_pages(str(path), [0]) == set()
+
+
+def test_logs_coverage_for_page_with_content(tmp_path, caplog):
+    import logging
+
+    caplog.set_level(logging.INFO, logger="webcon_pdf_splitter.blank_pages")
+    card = _white(500, 700)
+    ImageDraw.Draw(card).rectangle([100, 250, 400, 450], fill="black")
+    path = _pdf_with_pages(tmp_path, [card], name="dowod.pdf")
+
+    BlankPageDetector(dpi=60, max_ink_ratio=0.002).detect_blank_pages(path, [0])
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert any("ma tresc (mimo braku tekstu)" in message for message in messages)

@@ -35,3 +35,70 @@ def ink_ratio(image, margin_ratio: float = 0.04, dark_threshold: int = DARK_THRE
     histogram = core.histogram()
     dark = sum(histogram[: dark_threshold + 1])
     return dark / total
+
+
+class BlankPageDetector:
+    """Ocenia, czy wskazane strony PDF sa wizualnie puste.
+
+    Render w niskim DPI (domyslnie 60) jest tani - to ulamek kosztu OCR,
+    wiec detekcja moze biec PRZED Tesseractem i oszczedzic go na blankach.
+    Render jest sekwencyjny, bo PDFium nie jest thread-safe.
+
+    Kazdy blad oznacza "strona ma tresc": nieoceniona strona nigdy nie
+    kwalifikuje sie do usuniecia.
+    """
+
+    def __init__(
+        self,
+        dpi: int = 60,
+        max_ink_ratio: float = 0.002,
+        margin_ratio: float = 0.04,
+    ) -> None:
+        self._dpi = dpi
+        self._max_ink_ratio = max_ink_ratio
+        self._margin_ratio = margin_ratio
+
+    def detect_blank_pages(self, pdf_path: str, page_indices: list[int]) -> set[int]:
+        if not page_indices:
+            return set()
+        try:
+            import pypdfium2 as pdfium
+
+            pdf = pdfium.PdfDocument(pdf_path)
+        except Exception:
+            logger.warning(
+                "Nie udalo sie otworzyc dokumentu do oceny pustych stron - "
+                "zadna strona nie zostanie uznana za pusta",
+                exc_info=True,
+            )
+            return set()
+
+        blank: set[int] = set()
+        try:
+            for index in page_indices:
+                try:
+                    bitmap = pdf[index].render(scale=self._dpi / 72.0)
+                    ratio = ink_ratio(bitmap.to_pil(), self._margin_ratio)
+                except Exception:
+                    logger.warning(
+                        "Nie udalo sie ocenic strony %s - traktowana jako niepusta",
+                        index + 1,
+                        exc_info=True,
+                    )
+                    continue
+                if ratio <= self._max_ink_ratio:
+                    blank.add(index)
+                    logger.info(
+                        "Strona %s: pokrycie atramentem %.3f%% -> wizualnie pusta",
+                        index + 1,
+                        ratio * 100,
+                    )
+                else:
+                    logger.info(
+                        "Strona %s: pokrycie atramentem %.3f%% -> ma tresc (mimo braku tekstu)",
+                        index + 1,
+                        ratio * 100,
+                    )
+        finally:
+            pdf.close()
+        return blank
