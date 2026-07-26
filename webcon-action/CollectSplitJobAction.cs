@@ -160,11 +160,11 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
         if (result == null)
             return await HandleLostJobAsync(args, jobId);
 
-        var targetWorkflowId = ParseId(
+        var targetWorkflowId = ConfigHelper.ParsePositiveInt(
             Configuration.TargetWorkflowId, "ID obiegu docelowego (Dokument HR)");
-        var targetDocTypeId = ParseId(
+        var targetDocTypeId = ConfigHelper.ParsePositiveInt(
             Configuration.TargetDocTypeId, "ID typu formularza docelowego (Dokument HR)");
-        var startPathId = ParseId(
+        var startPathId = ConfigHelper.ParsePositiveInt(
             Configuration.StartPathId, "ID sciezki startowej (obieg Dokument HR)");
         // wznowienie po awarii: pomijamy dokumenty utworzone w poprzednim podejsciu
         var lastCreated = SplitJobSubmitter.GetField(args, Configuration.LastCreatedIndexFieldId, 0);
@@ -280,15 +280,6 @@ public class CollectSplitJobAction : CustomAction<CollectSplitJobActionConfig>
         {
             return $" Zadania {jobId} nie udalo sie skasowac ({ex.Message}) - wygasnie samo po TTL.";
         }
-    }
-
-    private static int ParseId(string configuredValue, string fieldName)
-    {
-        if (int.TryParse(configuredValue?.Trim(), out var id) && id > 0)
-            return id;
-
-        throw new InvalidOperationException(
-            $"Configuration field '{fieldName}' must evaluate to a positive integer, got: '{configuredValue}'.");
     }
 
     private string FormatDetectionComment(DetectedDocument detected)

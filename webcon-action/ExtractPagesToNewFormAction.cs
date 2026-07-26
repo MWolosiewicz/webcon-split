@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Globalization;
 using System.IO;
 using System.Threading.Tasks;
 using WebCon.WorkFlow.SDK.ActionPlugins;
@@ -17,9 +16,12 @@ public class ExtractPagesToNewFormAction : CustomAction<ExtractPagesToNewFormAct
         var pluginVersion = typeof(ExtractPagesToNewFormAction).Assembly.GetName().Version?.ToString() ?? "?";
         try
         {
-            var targetWorkflowId = ParseId(Configuration.TargetWorkflowId, "ID obiegu docelowego");
-            var targetDocTypeId = ParseId(Configuration.TargetDocTypeId, "ID typu formularza docelowego");
-            var startPathId = ParseId(Configuration.StartPathId, "ID sciezki startowej");
+            var targetWorkflowId = ConfigHelper.ParsePositiveInt(
+                Configuration.TargetWorkflowId, "ID obiegu docelowego");
+            var targetDocTypeId = ConfigHelper.ParsePositiveInt(
+                Configuration.TargetDocTypeId, "ID typu formularza docelowego");
+            var startPathId = ConfigHelper.ParsePositiveInt(
+                Configuration.StartPathId, "ID sciezki startowej");
 
             var source = await AttachmentSourceHelper.GetSinglePdfInCategoriesAsync(
                 args, Configuration.AllowedCategories);
@@ -46,6 +48,21 @@ public class ExtractPagesToNewFormAction : CustomAction<ExtractPagesToNewFormAct
                     WorkFlowID = targetWorkflowId,
                     DocTypeID = targetDocTypeId,
                     ParentDocumentID = args.Context.CurrentDocument.ID,
+                    // Spolka jawnie, mimo ze ta akcja dziala w kontekscie
+                    // klikajacego uzytkownika. Dokumentacja SDK dla CompanyID
+                    // mowi "If not set default is taken" - i jest to domyslna
+                    // spolka KONTEKSTU, nie dokumentu nadrzednego. Gdyby
+                    // dziedziczyla po rodzicu, poprawka w akcji odbierajacej
+                    // (60589bc) nie bylaby potrzebna, bo ParentDocumentID byl
+                    // tam ustawiony od poczatku. U uzytkownika przypisanego do
+                    // kilku spolek dokument potomny trafialby wiec do innej
+                    // spolki niz zrodlo.
+                    //
+                    // SkipPermissionsCheck celowo NIE jest ustawiany: te akcje
+                    // wywoluje uzytkownik i to jego uprawnienia maja decydowac.
+                    // W akcji odbierajacej jest inaczej tylko dlatego, ze tam
+                    // wykonawca jest konto serwisowe WEBCON.
+                    CompanyID = args.Context.CurrentDocument.CompanyID,
                 });
 
             await newDocument.Attachments.AddNewAsync(
@@ -78,11 +95,4 @@ public class ExtractPagesToNewFormAction : CustomAction<ExtractPagesToNewFormAct
         }
     }
 
-    private static int ParseId(string configuredValue, string fieldName)
-    {
-        if (int.TryParse(configuredValue?.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var id) && id > 0)
-            return id;
-        throw new InvalidOperationException(
-            $"Pole konfiguracji '{fieldName}' musi byc dodatnia liczba calkowita, otrzymano: '{configuredValue}'.");
-    }
 }

@@ -32,6 +32,15 @@ public class SubmitSplitJobAction : CustomAction<SubmitSplitJobActionConfig>
             // konczylaby "pomyslnie" z zerem elementow potomnych.
             SplitJobSubmitter.RequireFields(Configuration);
 
+            // Identyfikator starego zadania znika tak samo jak liczniki.
+            // MarkErrorAsync zapisuje wynik BLAD, ale pola jobId nie rusza,
+            // wiec paczka cofnieta z kroku Blad niesie identyfikator zadania,
+            // ktorego juz nie ma. Dozorca po stronie WEBCON rozpoznaje trwala
+            // awarie zlecania po PUSTYM jobId (zly token, zly adres - zadanie
+            // nigdy nie powstalo); stara wartosc sprawialaby, ze ten warunek
+            // nie zachodzi i zablokowana paczka czekalaby az do dluzszego
+            // progu dozorcy zamiast do krotszego.
+            await SplitJobSubmitter.SetFieldAsync(args, Configuration.JobIdFieldId, "");
             await SplitJobSubmitter.SetFieldAsync(args, Configuration.AttemptsFieldId, 0);
             await SplitJobSubmitter.SetFieldAsync(args, Configuration.LastCreatedIndexFieldId, 0);
             // pole wyniku MUSI byc wyczyszczone: to na nim opiera sie przejscie
