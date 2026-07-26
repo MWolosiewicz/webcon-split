@@ -592,13 +592,20 @@ Windows). Zero failed.
 
 - [ ] **Reczny przeglad niezmiennika**
 
-Run: `git diff main --stat -- splitter/tests/`
-Expected: w `test_pipeline.py` **wylacznie dopisane** linie (zero usunietych);
-w `test_rule_classifier.py` dopisane linie plus dokladnie trzy zmienione
-asercje `phrase_affinities`. Kazda inna zmieniona linia w istniejacych testach
+UWAGA na punkt odniesienia: `main` jest 26 commitow w tyle (cala praca nad
+kolejka zadan zyje na `branch/webcon-ocr-service`), wiec `git diff main`
+pokazalby tez tamte zmiany. Porownuj z commitem, od ktorego zaczela sie ta
+praca - `45b4e4e`.
+
+Run: `git diff 45b4e4e --numstat -- splitter/tests/`
+Expected: `test_pipeline.py` z **zerem usunietych** linii; `test_rule_classifier.py`
+z dokladnie **3** usunietymi. Kazda inna usunieta linia w istniejacych testach
 oznacza zlamany niezmiennik - zatrzymaj sie i zglos.
+
+Run: `git diff 45b4e4e -- splitter/tests/ | Select-String -Pattern '^-[^-]'`
+Expected: dokladnie trzy linie, wszystkie z `assert result.phrase_affinities ==`.
 
 - [ ] **Brak zmian w C#**
 
-Run: `git diff main --stat -- webcon-action/`
+Run: `git diff 45b4e4e --stat -- webcon-action/`
 Expected: pusto.
