@@ -12,7 +12,10 @@ class PageClassification:
     document_type: str
     confidence: float
     signals: list[str] = field(default_factory=list)
-    phrase_affinities: set[str] = field(default_factory=set)
+    # typ dokumentu -> frazy, ktore trafily, w oryginalnym brzmieniu ze slownika.
+    # Sam numer strony nie mowi operatorowi, ktora pozycje slownika poprawic;
+    # dopiero fraza wskazuje wiersz do zmiany.
+    phrase_affinities: dict[str, list[str]] = field(default_factory=dict)
 
 
 def normalize_text(value: str) -> str:
@@ -46,7 +49,7 @@ class RuleBasedClassifier:
         normalized = self._normalize(text)
         header_zone = fold_ocr_digits(normalized[:1200])
         best: PageClassification | None = None
-        affinities: set[str] = set()
+        affinities: dict[str, list[str]] = {}
 
         for pattern in self._patterns:
             header = self._normalize(pattern.header)
@@ -54,9 +57,10 @@ class RuleBasedClassifier:
                 continue
 
             header_match = fold_ocr_digits(header) in header_zone
-            phrase_hits = sum(
-                1 for phrase in pattern.phrases if self._normalize(phrase) in normalized
-            )
+            matched_phrases = [
+                phrase for phrase in pattern.phrases if self._normalize(phrase) in normalized
+            ]
+            phrase_hits = len(matched_phrases)
             excluded_hit = any(
                 self._normalize(phrase) in normalized for phrase in pattern.excluded_phrases
             )
@@ -64,8 +68,12 @@ class RuleBasedClassifier:
             if excluded_hit:
                 continue
 
-            if phrase_hits:
-                affinities.add(pattern.document_type)
+            if matched_phrases:
+                # kilka wierszy slownika moze dzielic ten sam typ (rozne
+                # naglowki) - frazy sumujemy, nie nadpisujemy; duplikaty
+                # odpadaja, zeby ta sama fraza nie pojawila sie dwa razy
+                known = affinities.setdefault(pattern.document_type, [])
+                known.extend(phrase for phrase in matched_phrases if phrase not in known)
 
             score = 0.0
             signals: list[str] = []

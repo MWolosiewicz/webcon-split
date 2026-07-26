@@ -136,7 +136,7 @@ def test_phrase_bonus_scales_with_weight():
     result = classifier.classify_page("dalszy ciag: pracodawca...", page_number=2)
 
     assert result.document_type == "Nieznany typ dokumentu"
-    assert result.phrase_affinities == {"Umowa o prace"}
+    assert result.phrase_affinities == {"Umowa o prace": ["pracodawca"]}
 
 
 def test_classifier_marks_unknown_page_as_continuation_with_low_confidence():
@@ -160,7 +160,7 @@ def test_classify_page_reports_phrase_affinities_without_header():
     result = classifier.classify_page("dalszy ciag: pracodawca zapewnia...", page_number=2)
 
     assert result.document_type == "Nieznany typ dokumentu"
-    assert result.phrase_affinities == {"Umowa o prace"}
+    assert result.phrase_affinities == {"Umowa o prace": ["pracodawca"]}
 
 
 def test_excluded_phrase_blocks_affinity():
@@ -172,7 +172,7 @@ def test_excluded_phrase_blocks_affinity():
 
     result = classifier.classify_page("aneks: pracodawca zmienia warunki", page_number=2)
 
-    assert result.phrase_affinities == set()
+    assert result.phrase_affinities == {}
 
 
 @pytest.mark.parametrize(
@@ -217,3 +217,80 @@ def test_known_document_types_are_sorted_and_unique():
     )
 
     assert classifier.known_document_types == ["Aneks", "Umowa o prace"]
+
+
+def test_phrase_affinities_carry_matched_phrases():
+    classifier = RuleBasedClassifier(
+        patterns=[
+            DocumentPattern("Umowa o prace", "UMOWA O PRACE", ["pracodawca"], [], 1.0, True),
+        ]
+    )
+
+    result = classifier.classify_page("dalszy ciag: pracodawca zapewnia...", page_number=2)
+
+    assert result.phrase_affinities == {"Umowa o prace": ["pracodawca"]}
+
+
+def test_phrase_affinities_carry_every_matched_phrase_in_pattern_order():
+    classifier = RuleBasedClassifier(
+        patterns=[
+            DocumentPattern(
+                "Umowa o prace", "UMOWA O PRACE", ["pracodawca", "wynagrodzenie"], [], 1.0, True
+            ),
+        ]
+    )
+
+    result = classifier.classify_page(
+        "wynagrodzenie wyplaca pracodawca w terminie", page_number=2
+    )
+
+    assert result.phrase_affinities == {"Umowa o prace": ["pracodawca", "wynagrodzenie"]}
+
+
+def test_patterns_sharing_document_type_merge_their_phrases():
+    # slownik dopuszcza kilka wierszy na ten sam typ (rozne naglowki);
+    # frazy musza sie sumowac, a nie nadpisywac
+    classifier = RuleBasedClassifier(
+        patterns=[
+            DocumentPattern("Umowa o prace", "UMOWA O PRACE", ["pracodawca"], [], 1.0, True),
+            DocumentPattern("Umowa o prace", "UMOWA ZLECENIA", ["zleceniobiorca"], [], 1.0, True),
+        ]
+    )
+
+    result = classifier.classify_page(
+        "strony: pracodawca oraz zleceniobiorca", page_number=2
+    )
+
+    assert result.phrase_affinities == {"Umowa o prace": ["pracodawca", "zleceniobiorca"]}
+
+
+def test_phrase_repeated_across_patterns_of_one_type_is_listed_once():
+    classifier = RuleBasedClassifier(
+        patterns=[
+            DocumentPattern("Umowa o prace", "UMOWA O PRACE", ["pracodawca"], [], 1.0, True),
+            DocumentPattern("Umowa o prace", "UMOWA ZLECENIA", ["pracodawca"], [], 1.0, True),
+        ]
+    )
+
+    result = classifier.classify_page("pracodawca oswiadcza, ze...", page_number=2)
+
+    assert result.phrase_affinities == {"Umowa o prace": ["pracodawca"]}
+
+
+def test_header_plus_two_phrases_at_weight_one_reaches_full_confidence():
+    # regresja punktacji: zbieranie fraz nie moze zmienic sposobu liczenia
+    # phrase_hits (0.80 naglowek + 2 x 0.10 frazy = 1.00)
+    classifier = RuleBasedClassifier(
+        patterns=[
+            DocumentPattern(
+                "Umowa o prace", "UMOWA O PRACE", ["pracodawca", "wynagrodzenie"], [], 1.0, True
+            ),
+        ]
+    )
+
+    result = classifier.classify_page(
+        "UMOWA O PRACE zawarta z pracodawca, wynagrodzenie zasadnicze", page_number=1
+    )
+
+    assert result.confidence == 1.0
+    assert "phrase_hits:2" in result.signals
