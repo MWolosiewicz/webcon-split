@@ -169,7 +169,9 @@ Dla kolejnych stron (każda należy do dokładnie jednego dokumentu):
 
 1. **Nagłówek pasuje** (strona pierwsza) → nowy dokument.
 2. **≥1 fraza typu bieżącego dokumentu** (powinowactwo) → kontynuacja bieżącego
-   dokumentu (bez LLM).
+   dokumentu (bez LLM). Ta ścieżka nie podnosi `requiresReview`, ale zostawia
+   ślad `phrase_continuation:<fraza>(<strony>)` w `signals` — po nim widać,
+   która pozycja słownika przykleiła stronę, gdy okaże się zbyt generyczna.
 3. **Strona pusta** → o pustce decyduje **obraz**, nie tekst. Strona jest
    usuwana wyłącznie gdy jednocześnie (a) render wykazał pokrycie atramentem
    poniżej `SPLITTER_BLANK_MAX_INK_RATIO` i (b) ma ≤ `SPLITTER_EMPTY_PAGE_MAX_ALNUM`
@@ -223,7 +225,7 @@ Dokument dostaje `requiresReview = true`, gdy jest doklejona strona
 tekstu, strona doklejona bez dopasowania (z pasującymi frazami innych typów i
 propozycją LLM), odrzucony werdykt niespójny, pewność poniżej progu. `signals`
 niosą ślad techniczny (`header_match:...`, `phrase_hits:N`, `glued_unknown_page:N`,
-`llm:<kod>`). Status całości to `requires_review`, gdy choć jeden dokument wymaga
+`phrase_continuation:<fraza>(<strony>)`, `llm:<kod>`). Status całości to `requires_review`, gdy choć jeden dokument wymaga
 weryfikacji, inaczej `completed`.
 
 ### 6. Podział pliku
@@ -410,7 +412,7 @@ odpytywanie co minutę nie może przeciągać całej paczki przez sieć.
 | `startPage` / `endPage` | zakres stron w oryginale |
 | `outputFileName` | nazwa pliku wynikowego |
 | `fileContentBase64` | zawartość wynikowego PDF (base64) |
-| `signals` | ślad techniczny decyzji klasyfikacji (`header_match:…`, `phrase_hits:…`, `llm:…`) — akcja dopisuje go do komentarza dokumentu |
+| `signals` | ślad techniczny decyzji klasyfikacji (`header_match:…`, `phrase_hits:…`, `phrase_continuation:…`, `llm:…`) — akcja dopisuje go do komentarza dokumentu |
 
 Kody: `202` (przyjęte do kolejki), `400` (złe `patterns`, nie-PDF w nazwie —
 błędy konfiguracji wracają synchronicznie), `401` (zły token), `404` (nieznane

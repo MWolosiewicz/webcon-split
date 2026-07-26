@@ -29,6 +29,23 @@ class _Segment:
     known: bool
     forced_review: bool = False
     unmatched_pages: list[_UnmatchedPage] = field(default_factory=list)
+    # fraza -> strony, ktore ta fraza przykleila do tego segmentu
+    phrase_continuations: dict[str, list[int]] = field(default_factory=dict)
+
+
+def _phrase_continuation_signals(segment: _Segment) -> list[str]:
+    """Slad po stronach doklejonych na podstawie trafionej frazy.
+
+    Grupowanie po FRAZIE, nie po stronie: liczba wpisow jest wtedy ograniczona
+    liczba fraz typu w slowniku (typowo kilka), a nie dlugoscia dokumentu -
+    30-stronicowa umowa nie zamienia komentarza dziecka w sciane tekstu.
+    Fraza jest tez jednostka, ktora operator realnie poprawia w slowniku;
+    sam numer strony nie wskazuje, co zmienic.
+    """
+    return [
+        f"phrase_continuation:{phrase}({','.join(str(page) for page in pages)})"
+        for phrase, pages in segment.phrase_continuations.items()
+    ]
 
 
 class ClassificationPipeline:
@@ -122,10 +139,19 @@ class ClassificationPipeline:
 
             if current is not None and current.known and current.document_type in page.phrase_affinities:
                 current.end_page = page_number
+                # Jedyna sciezka podzialu, ktora do niedawna nie zostawiala
+                # zadnego sladu. Strona obcego dokumentu potrafi tu wsiaknac
+                # w biezacy przez jedna generyczna fraze ("pracownik"), bez
+                # LLM i bez requiresReview - bez zapisu operator nie ma jak
+                # tego zobaczyc inaczej niz czytajac PDF.
+                matched_phrases = page.phrase_affinities[current.document_type]
+                for phrase in matched_phrases:
+                    current.phrase_continuations.setdefault(phrase, []).append(page_number)
                 logger.info(
-                    "Strona %s: kontynuacja '%s' (dopasowanie fraz)",
+                    "Strona %s: kontynuacja '%s' (dopasowanie fraz: %s)",
                     page_number,
                     current.document_type,
+                    ", ".join(matched_phrases),
                 )
                 continue
 
@@ -239,7 +265,7 @@ class ClassificationPipeline:
                     outputFileName=self._file_name(
                         segment.document_type, segment.start_page, segment.end_page
                     ),
-                    signals=segment.signals,
+                    signals=segment.signals + _phrase_continuation_signals(segment),
                     removedPages=segment_removed,
                 )
             )

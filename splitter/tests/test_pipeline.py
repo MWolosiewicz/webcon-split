@@ -715,3 +715,95 @@ def test_unknown_mode_behaves_like_keep():
 
     assert result.documents[0].removedPages == []
     assert result.documents[0].endPage == 2
+
+
+def test_phrase_continuation_leaves_a_signal():
+    result = _make_pipeline().split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "wynagrodzenie zasadnicze wynosi"],
+    )
+
+    doc = result.documents[0]
+    assert (doc.startPage, doc.endPage) == (1, 2)
+    assert "phrase_continuation:wynagrodzenie(2)" in doc.signals
+
+
+def test_phrase_continuation_groups_pages_under_one_phrase():
+    result = _make_pipeline().split_pages(
+        "scan.pdf",
+        [
+            "UMOWA O PRACE zawarta z pracodawca",
+            "wynagrodzenie zasadnicze wynosi",
+            "wynagrodzenie platne do 10 dnia",
+            "wynagrodzenie moze byc zmienione",
+        ],
+    )
+
+    doc = result.documents[0]
+    traces = [s for s in doc.signals if s.startswith("phrase_continuation:")]
+    assert traces == ["phrase_continuation:wynagrodzenie(2,3,4)"]
+
+
+def test_phrase_continuation_lists_each_phrase_separately():
+    result = _make_pipeline().split_pages(
+        "scan.pdf",
+        [
+            "UMOWA O PRACE zawarta z pracodawca",
+            "wynagrodzenie zasadnicze wynosi",
+            "pracodawca zapewnia szkolenie",
+        ],
+    )
+
+    doc = result.documents[0]
+    traces = [s for s in doc.signals if s.startswith("phrase_continuation:")]
+    # kolejnosc pierwszego wystapienia: wynagrodzenie (str. 2), pracodawca (str. 3)
+    assert traces == [
+        "phrase_continuation:wynagrodzenie(2)",
+        "phrase_continuation:pracodawca(3)",
+    ]
+
+
+def test_phrase_continuation_does_not_force_review():
+    # STRAZNIK NIEZMIENNIKA: slad jest zapisem, nie decyzja
+    result = _make_pipeline().split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca", "wynagrodzenie zasadnicze wynosi"],
+    )
+
+    doc = result.documents[0]
+    assert doc.requiresReview is False
+    assert doc.reviewReasons == []
+    assert result.warnings == []
+    assert result.status == "completed"
+
+
+def test_document_without_phrase_continuation_has_no_such_signal():
+    result = _make_pipeline().split_pages(
+        "scan.pdf",
+        ["UMOWA O PRACE zawarta z pracodawca"],
+    )
+
+    doc = result.documents[0]
+    assert [s for s in doc.signals if s.startswith("phrase_continuation:")] == []
+
+
+def test_phrase_continuation_signal_coexists_with_glued_unknown_page():
+    result = _make_pipeline().split_pages(
+        "scan.pdf",
+        [
+            "UMOWA O PRACE zawarta z pracodawca",
+            "wynagrodzenie zasadnicze wynosi",
+            "zupelnie obce pismo przewodnie",
+            "SWIADECTWO PRACY okres zatrudnienia",
+        ],
+    )
+
+    # ten sam podzial co przed zmiana - por.
+    # test_unmatched_middle_page_is_glued_and_flagged_without_llm
+    assert [(d.documentType, d.startPage, d.endPage) for d in result.documents] == [
+        ("Umowa o prace", 1, 3),
+        ("Swiadectwo pracy", 4, 4),
+    ]
+    umowa = result.documents[0]
+    assert "phrase_continuation:wynagrodzenie(2)" in umowa.signals
+    assert "glued_unknown_page:3" in umowa.signals
