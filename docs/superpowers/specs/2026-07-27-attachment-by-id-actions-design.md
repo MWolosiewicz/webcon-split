@@ -74,6 +74,16 @@ Realizacja: `newDocument.Attachments.AddNewAsync(nazwa, bajty)` zwraca
 `AttachmentData`, wiec na zwroconym obiekcie wolamy `SetFileGroupAsync(idKategorii)`
 - ten sam wzorzec, ktorego `RemovePagesAction` uzywa dzis dla biezacego elementu.
 
+Gdzie laduje wynik (bez zmian wzgledem dzisiejszego zachowania, zapisane tu, bo
+bywa mylace): wyciety PDF powstaje WYLACZNIE jako zalacznik nowego elementu -
+na formularzu zrodlowym nie pojawia sie zaden nowy plik, niezaleznie od
+przelacznika "Usun wyciete strony ze zrodla". Przelacznik decyduje tylko o losie
+STRON w zrodle: wlaczony - strony znikaja z zalacznika zrodlowego (przeniesienie),
+wylaczony - zostaja (kopia, te same strony w dwoch miejscach). Usuniecie ze zrodla
+nadpisuje istniejacy zalacznik (`SetContent` + `UpdateAttachmentAsync`), nie tworzy
+drugiego - ID zalacznika zrodlowego sie nie zmienia, wiec regula biznesowa
+wskazujaca to ID pozostaje wazna po operacji.
+
 **Ryzyko do zweryfikowania empirycznie:** nie jest pewne, czy SDK pozwala ustawic
 grupe plikow na dokumencie przed `StartNewWorkFlowAsync` (element nie istnieje
 jeszcze w bazie). Wariant zapasowy, jesli SDK odrzuci: ustawic grupe PO starcie -
