@@ -23,8 +23,8 @@ public class ExtractPagesAction : CustomAction<ExtractPagesActionConfig>
             var startPathId = ConfigHelper.ParsePositiveInt(
                 Configuration.StartPathId, "ID sciezki startowej");
 
-            var source = await AttachmentSourceHelper.GetSinglePdfInCategoriesAsync(
-                args, Configuration.AllowedCategories);
+            var source = await AttachmentSourceHelper.GetPdfByIdAsync(
+                args, Configuration.SourceAttachmentId);
             var pdfContent = await source.GetContentAsync();
 
             PageOpResult? removeResult = null;

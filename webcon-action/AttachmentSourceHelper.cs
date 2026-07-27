@@ -1,6 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using WebCon.WorkFlow.SDK.ActionPlugins.Model;
 using WebCon.WorkFlow.SDK.Documents;
@@ -10,41 +8,48 @@ namespace WebconPdfSplitterAction;
 
 internal static class AttachmentSourceHelper
 {
-    // Zwraca dokladnie jeden zalacznik PDF nalezacy do dozwolonych kategorii (FileGroup).
-    // Kategorie z konfiguracji rozdzielone srednikami; dopasowanie po ID lub nazwie grupy.
-    public static async Task<AttachmentData> GetSinglePdfInCategoriesAsync(
-        RunCustomActionParams args, string allowedCategoriesRaw)
+    /// <summary>
+    /// Zwraca zalacznik PDF wskazany po ID - typowo z reguly biznesowej
+    /// wystawionej na pole konfiguracji akcji.
+    ///
+    /// Kontrola przynaleznosci do biezacego elementu nie jest tu ostroznoscia
+    /// na wyrost: regula zwraca sama liczbe, a GetAttachmentAsync siega do
+    /// calej bazy. Bez niej bledne ID w trybie "podmien zawartosc w miejscu"
+    /// nadpisaloby zalacznik CUDZEGO elementu - po cichu i nieodwracalnie.
+    /// </summary>
+    public static async Task<AttachmentData> GetPdfByIdAsync(
+        RunCustomActionParams args, string rawAttachmentId)
     {
-        var allowed = (allowedCategoriesRaw ?? "")
-            .Split(';')
-            .Select(value => value.Trim())
-            .Where(value => value.Length > 0)
-            .ToList();
-        if (allowed.Count == 0)
-            throw new InvalidOperationException(
-                "Nie skonfigurowano dozwolonych kategorii zalacznikow dla tej akcji.");
+        var attachmentId = ConfigHelper.ParsePositiveInt(
+            rawAttachmentId, "ID zalacznika zrodlowego");
 
         var manager = new DocumentAttachmentsManager(args.Context);
-        var attachments = await manager.GetAttachmentsAsync(
-            new GetAttachmentsParams { DocumentId = args.Context.CurrentDocument.ID });
+        // jawne przypisania zamiast pozycyjnego GetAttachmentAsync(id, bool);
+        // SkipPermissionsCheck = false, bo akcje reczne wykonuje klikajacy
+        // uzytkownik i to jego uprawnienia maja decydowac
+        var attachment = await manager.GetAttachmentAsync(new GetAttachmentParams
+        {
+            AttachmentId = attachmentId,
+            SkipPermissionsCheck = false,
+        });
 
-        bool InAllowed(AttachmentData attachment) =>
-            attachment.FileGroup != null &&
-            allowed.Any(category =>
-                string.Equals(category, attachment.FileGroup.ID, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(category, attachment.FileGroup.DisplayName, StringComparison.OrdinalIgnoreCase));
-
-        var pdfs = attachments
-            .Where(a => string.Equals(a.FileExtension?.TrimStart('.'), "pdf", StringComparison.OrdinalIgnoreCase))
-            .Where(InAllowed)
-            .ToList();
-
-        if (pdfs.Count == 0)
+        if (attachment == null)
             throw new InvalidOperationException(
-                $"Brak zalacznika PDF w dozwolonych kategoriach ({string.Join(", ", allowed)}).");
-        if (pdfs.Count > 1)
+                $"Nie znaleziono zalacznika o ID {attachmentId} " +
+                "(nie istnieje albo uzytkownik nie ma do niego uprawnien).");
+
+        var currentDocumentId = args.Context.CurrentDocument.ID;
+        if (attachment.DocumentID != currentDocumentId)
             throw new InvalidOperationException(
-                $"Wiecej niz jeden PDF w dozwolonych kategoriach ({string.Join(", ", allowed)}); zrodlo niejednoznaczne.");
-        return pdfs[0];
+                $"Zalacznik ID {attachmentId} nalezy do elementu " +
+                $"{attachment.DocumentID?.ToString() ?? "nieznanego"}, a nie do biezacego " +
+                $"({currentDocumentId}). Sprawdz regule wskazujaca ID zalacznika.");
+
+        var extension = attachment.FileExtension?.TrimStart('.') ?? "";
+        if (!string.Equals(extension, "pdf", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"Zalacznik '{attachment.FileName}' (ID {attachmentId}) nie jest plikiem PDF.");
+
+        return attachment;
     }
 }
