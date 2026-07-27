@@ -22,6 +22,13 @@ public class ExtractPagesAction : CustomAction<ExtractPagesActionConfig>
                 Configuration.TargetDocTypeId, "ID typu formularza docelowego");
             var startPathId = ConfigHelper.ParsePositiveInt(
                 Configuration.StartPathId, "ID sciezki startowej");
+            // walidacja PRZED utworzeniem elementu - pusta kategoria wykryta
+            // dopiero po StartNewWorkFlowAsync zostawilaby w obiegu wystartowany
+            // element potomny, ktorego nikt nie zamowil
+            var targetCategoryId = Configuration.TargetAttachmentCategoryId?.Trim() ?? "";
+            if (targetCategoryId.Length == 0)
+                throw new InvalidOperationException(
+                    "Pole konfiguracji 'ID kategorii dla nowego zalacznika' jest puste.");
 
             var source = await AttachmentSourceHelper.GetPdfByIdAsync(
                 args, Configuration.SourceAttachmentId);
@@ -65,9 +72,13 @@ public class ExtractPagesAction : CustomAction<ExtractPagesActionConfig>
                     CompanyID = args.Context.CurrentDocument.CompanyID,
                 });
 
-            await newDocument.Attachments.AddNewAsync(
+            // AddNewAsync zwraca AttachmentData, wiec grupe plikow ustawiamy na
+            // zwroconym obiekcie - tak samo, jak RemovePagesAction robi to dla
+            // zalacznika biezacego elementu
+            var newAttachment = await newDocument.Attachments.AddNewAsync(
                 extractResult.OutputFileName,
                 Convert.FromBase64String(extractResult.FileContentBase64));
+            await newAttachment.SetFileGroupAsync(targetCategoryId);
             await newDocument.Comment.AddCommentAsync(
                 $"Wyciete ze zrodla '{source.FileName}', strony '{Configuration.PageRange}'.");
 
@@ -84,7 +95,7 @@ public class ExtractPagesAction : CustomAction<ExtractPagesActionConfig>
             args.LogMessage =
                 $"ExtractPagesAction v{pluginVersion}. Zrodlo '{source.FileName}' (ID {source.ID}); " +
                 $"wyciete strony '{Configuration.PageRange}' ({extractResult.PageCount} stron); " +
-                $"utworzono element {started.CreatedDocumentID}; " +
+                $"utworzono element {started.CreatedDocumentID}, kategoria zalacznika '{targetCategoryId}'; " +
                 $"zrodlo: {(Configuration.RemoveFromSource ? "strony usuniete" : "nietkniete")}.";
         }
         catch (Exception ex)

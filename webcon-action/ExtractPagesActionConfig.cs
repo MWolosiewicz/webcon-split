@@ -46,10 +46,19 @@ public class ExtractPagesActionConfig : SplitterConnectionConfig
         Order = 14)]
     public string StartPathId { get; set; } = "";
 
+    [ConfigEditableText(
+        DisplayName = "ID kategorii dla nowego zalacznika",
+        Description = "ID grupy plikow (kategorii zalacznikow) w typie formularza DOCELOWYM, " +
+                      "do ktorej trafi wyciety PDF. Liczba lub tag/stala.",
+        IsRequired = true,
+        TagEvaluationMode = EvaluationMode.Default,
+        Order = 15)]
+    public string TargetAttachmentCategoryId { get; set; } = "";
+
     [ConfigEditableBool(
         DisplayName = "Usun wyciete strony ze zrodla",
         Description = "Wlaczone: po wycieciu usuwa te strony z zalacznika zrodlowego (przenoszenie). " +
                       "Wylaczone: zrodlo zostaje nietkniete (kopiowanie).",
-        Order = 15)]
+        Order = 16)]
     public bool RemoveFromSource { get; set; }
 }
