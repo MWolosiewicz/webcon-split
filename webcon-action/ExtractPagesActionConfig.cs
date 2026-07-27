@@ -3,7 +3,7 @@ using WebCon.WorkFlow.SDK.ConfigAttributes;
 
 namespace WebconPdfSplitterAction;
 
-public class ExtractPagesToNewFormActionConfig : SplitterConnectionConfig
+public class ExtractPagesActionConfig : SplitterConnectionConfig
 {
     [ConfigEditableText(
         DisplayName = "Dozwolone kategorie zalacznikow",

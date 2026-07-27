@@ -595,7 +595,7 @@ weryfikacji:
 - **RemovePagesAction** — usuwa zakres stron (np. `2-4,7`) z jedynego PDF-a
   w dozwolonych kategoriach załącznika. Przełącznik „Podmień zawartość w miejscu"
   (nadpisz oryginał) lub dodanie nowego załącznika (oryginał zostaje).
-- **ExtractPagesToNewFormAction** — wycina strony do nowego, surowego elementu
+- **ExtractPagesAction** — wycina strony do nowego, surowego elementu
   (bez klasyfikacji — typ i weryfikację ustawia operator) w obiegu docelowym;
   przełącznik „Usuń wycięte strony ze źródła" (przenoszenie vs kopiowanie).
 

@@ -9,11 +9,11 @@ using WebCon.WorkFlow.SDK.Documents.Model.Attachments;
 
 namespace WebconPdfSplitterAction;
 
-public class ExtractPagesToNewFormAction : CustomAction<ExtractPagesToNewFormActionConfig>
+public class ExtractPagesAction : CustomAction<ExtractPagesActionConfig>
 {
     public override async Task RunAsync(RunCustomActionParams args)
     {
-        var pluginVersion = typeof(ExtractPagesToNewFormAction).Assembly.GetName().Version?.ToString() ?? "?";
+        var pluginVersion = typeof(ExtractPagesAction).Assembly.GetName().Version?.ToString() ?? "?";
         try
         {
             var targetWorkflowId = ConfigHelper.ParsePositiveInt(
@@ -82,7 +82,7 @@ public class ExtractPagesToNewFormAction : CustomAction<ExtractPagesToNewFormAct
             }
 
             args.LogMessage =
-                $"ExtractPagesToNewFormAction v{pluginVersion}. Zrodlo '{source.FileName}' (ID {source.ID}); " +
+                $"ExtractPagesAction v{pluginVersion}. Zrodlo '{source.FileName}' (ID {source.ID}); " +
                 $"wyciete strony '{Configuration.PageRange}' ({extractResult.PageCount} stron); " +
                 $"utworzono element {started.CreatedDocumentID}; " +
                 $"zrodlo: {(Configuration.RemoveFromSource ? "strony usuniete" : "nietkniete")}.";
@@ -91,7 +91,7 @@ public class ExtractPagesToNewFormAction : CustomAction<ExtractPagesToNewFormAct
         {
             args.HasErrors = true;
             args.Message = $"Wyciecie stron do nowego elementu nie powiodlo sie: {ex.Message}";
-            args.LogMessage = $"ExtractPagesToNewFormAction v{pluginVersion}. {ex}";
+            args.LogMessage = $"ExtractPagesAction v{pluginVersion}. {ex}";
         }
     }
 

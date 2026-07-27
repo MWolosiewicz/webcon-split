@@ -26,10 +26,10 @@
     },
     {
       "guid": "d707e16e-80df-4395-8f68-76000f90d838",
-      "name": "ExtractPagesToNewFormAction",
-      "description": "Wycina wskazane strony z zalacznika PDF i tworzy nowy (surowy) element weryfikacyjny; opcjonalnie usuwa strony ze zrodla.",
+      "name": "ExtractPagesAction",
+      "description": "Wycina wskazane strony ze wskazanego zalacznika PDF i tworzy nowy (surowy) element weryfikacyjny; opcjonalnie usuwa strony ze zrodla.",
       "assembly": "WebconPdfSplitterAction",
-      "class": "WebconPdfSplitterAction.ExtractPagesToNewFormAction",
+      "class": "WebconPdfSplitterAction.ExtractPagesAction",
       "type": "CustomAction"
     }
   ],
