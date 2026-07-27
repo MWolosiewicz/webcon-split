@@ -31,14 +31,6 @@
       "assembly": "WebconPdfSplitterAction",
       "class": "WebconPdfSplitterAction.ExtractPagesToNewFormAction",
       "type": "CustomAction"
-    },
-    {
-      "guid": "b9bfe1d9-07ca-4cd7-bc6f-002f75ed3a9e",
-      "name": "MergeAttachmentsAction",
-      "description": "Skleja wybrane zalaczniki PDF w jeden wg kolejnosci wierszy listy pozycji i dodaje wynik do biezacego elementu.",
-      "assembly": "WebconPdfSplitterAction",
-      "class": "WebconPdfSplitterAction.MergeAttachmentsAction",
-      "type": "CustomAction"
     }
   ],
   "dependencies": [

@@ -71,9 +71,3 @@ public sealed class PageOpResult
     public string FileContentBase64 { get; set; } = "";
     public List<string> Warnings { get; set; } = new();
 }
-
-public sealed class MergeInput
-{
-    public string FileName { get; set; } = "";
-    public byte[] Content { get; set; } = System.Array.Empty<byte>();
-}

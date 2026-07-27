@@ -167,19 +167,6 @@ public sealed class SplitterClient
         return await PostAsync<PageOpResult>(path, content, webconElementId);
     }
 
-    public async Task<PageOpResult> MergeAsync(
-        IReadOnlyList<MergeInput> files, int? webconElementId = null)
-    {
-        using var content = new MultipartFormDataContent();
-        foreach (var file in files)
-        {
-            var part = new ByteArrayContent(file.Content);
-            part.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
-            content.Add(part, "files", file.FileName);
-        }
-        return await PostAsync<PageOpResult>("/api/merge", content, webconElementId);
-    }
-
     private async Task<T> PostAsync<T>(
         string path, MultipartFormDataContent content, int? webconElementId)
     {
