@@ -15,8 +15,8 @@ public class RemovePagesAction : CustomAction<RemovePagesActionConfig>
         var pluginVersion = typeof(RemovePagesAction).Assembly.GetName().Version?.ToString() ?? "?";
         try
         {
-            var source = await AttachmentSourceHelper.GetSinglePdfInCategoriesAsync(
-                args, Configuration.AllowedCategories);
+            var source = await AttachmentSourceHelper.GetPdfByIdAsync(
+                args, Configuration.SourceAttachmentId);
             var pdfContent = await source.GetContentAsync();
 
             var client = new SplitterClient(

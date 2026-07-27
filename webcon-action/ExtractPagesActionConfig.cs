@@ -3,16 +3,16 @@ using WebCon.WorkFlow.SDK.ConfigAttributes;
 
 namespace WebconPdfSplitterAction;
 
-public class ExtractPagesToNewFormActionConfig : SplitterConnectionConfig
+public class ExtractPagesActionConfig : SplitterConnectionConfig
 {
     [ConfigEditableText(
-        DisplayName = "Dozwolone kategorie zalacznikow",
-        Description = "Nazwy lub ID kategorii (grup) zalacznikow zrodlowych. Kilka rozdziel srednikiem. " +
-                      "Akcja wymaga dokladnie jednego PDF w tych kategoriach.",
+        DisplayName = "ID zalacznika zrodlowego",
+        Description = "ID zalacznika PDF biezacego elementu, z ktorego wycinamy strony. " +
+                      "Zwykle regula biznesowa albo pole formularza zwracajace ID zalacznika.",
         IsRequired = true,
         TagEvaluationMode = EvaluationMode.Default,
         Order = 10)]
-    public string AllowedCategories { get; set; } = "";
+    public string SourceAttachmentId { get; set; } = "";
 
     [ConfigEditableText(
         DisplayName = "Zakres stron do wyciecia",
@@ -46,10 +46,19 @@ public class ExtractPagesToNewFormActionConfig : SplitterConnectionConfig
         Order = 14)]
     public string StartPathId { get; set; } = "";
 
+    [ConfigEditableText(
+        DisplayName = "ID kategorii dla nowego zalacznika",
+        Description = "ID grupy plikow (kategorii zalacznikow) w typie formularza DOCELOWYM, " +
+                      "do ktorej trafi wyciety PDF. Liczba lub tag/stala.",
+        IsRequired = true,
+        TagEvaluationMode = EvaluationMode.Default,
+        Order = 15)]
+    public string TargetAttachmentCategoryId { get; set; } = "";
+
     [ConfigEditableBool(
         DisplayName = "Usun wyciete strony ze zrodla",
         Description = "Wlaczone: po wycieciu usuwa te strony z zalacznika zrodlowego (przenoszenie). " +
                       "Wylaczone: zrodlo zostaje nietkniete (kopiowanie).",
-        Order = 15)]
+        Order = 16)]
     public bool RemoveFromSource { get; set; }
 }

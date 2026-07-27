@@ -435,7 +435,9 @@ na stronach. Uwierzytelnianie i nagłówek `X-Webcon-Element-Id` jak w `/api/spl
 - **`pages`** — zakres stron **1-based, inclusive**, np. `2-4,7`. Zły zakres / pusty
   wynik (usunięcie wszystkich stron) → `400` z komunikatem w `detail`.
 - **`/api/merge`** — pola `files` powtórzone w kolejności sklejania; `output_file_name`
-  opcjonalne (domyślnie `merged.pdf`).
+  opcjonalne (domyślnie `merged.pdf`). Endpoint zostaje dostępny w serwisie, ale
+  **nie ma już po stronie pluginu akcji, która go woła** (akcja sklejająca została
+  usunięta) — jest do użytku z zewnątrz, np. w testach i integracjach.
 
 **Odpowiedź `PageOpResult`:** `{ outputFileName, pageCount, fileContentBase64, warnings }`.
 
@@ -587,24 +589,26 @@ obiektów", jeśli niewidoczne).
 ### Ręczne akcje operatora
 
 Gdy automat sklei dwa dokumenty w jeden (element oznaczony „do sprawdzenia"),
-operator koryguje wynik trzema akcjami — zwykle podpiętymi pod przyciski w kroku
+operator koryguje wynik dwiema akcjami — zwykle podpiętymi pod przyciski w kroku
 weryfikacji:
 
-- **RemovePagesAction** — usuwa zakres stron (np. `2-4,7`) z jedynego PDF-a
-  w dozwolonych kategoriach załącznika. Przełącznik „Podmień zawartość w miejscu"
-  (nadpisz oryginał) lub dodanie nowego załącznika (oryginał zostaje).
-- **ExtractPagesToNewFormAction** — wycina strony do nowego, surowego elementu
-  (bez klasyfikacji — typ i weryfikację ustawia operator) w obiegu docelowym;
-  przełącznik „Usuń wycięte strony ze źródła" (przenoszenie vs kopiowanie).
-- **MergeAttachmentsAction** — skleja załączniki wskazane w liście pozycji
-  (wiersz = załącznik po ID z kolumny picker, kolejność wierszy = kolejność
-  sklejania) w jeden PDF dodawany do bieżącego elementu; źródła zostają.
+- **RemovePagesAction** — usuwa zakres stron (np. `2-4,7`) ze wskazanego PDF-a.
+  Przełącznik „Podmień zawartość w miejscu" (nadpisz oryginał) lub dodanie nowego
+  załącznika (oryginał zostaje, wynik dziedziczy kategorię źródła).
+- **ExtractPagesAction** — wycina strony do nowego, surowego elementu
+  (bez klasyfikacji — typ i weryfikację ustawia operator) w obiegu docelowym.
+  Wycięty PDF powstaje **wyłącznie** na nowym elemencie, we wskazanej kategorii
+  załączników typu docelowego; na formularzu źródłowym nie pojawia się nowy plik.
+  Przełącznik „Usuń wycięte strony ze źródła" decyduje tylko o losie stron w źródle
+  (przenoszenie vs kopiowanie) — usunięcie nadpisuje istniejący załącznik, więc jego
+  ID się nie zmienia.
 
-Wszystkie trzy dzielą konfigurację połączenia (URL/token/timeout) z akcjami podziału.
-Kategorie załączników podaje się nazwami lub ID grup, rozdzielone średnikami;
-akcje remove/extract wymagają **dokładnie jednego** PDF-a w tych kategoriach
-(0 lub >1 → czytelny błąd). Komunikaty walidacyjne serwisu (np. „Strona 8 poza
-dokumentem (1-6)") trafiają do komunikatu błędu akcji.
+Obie dzielą konfigurację połączenia (URL/token/timeout) z akcjami podziału.
+Źródłowy PDF wskazuje się **ID załącznika** — pole przyjmuje tag/regułę biznesową,
+więc na formularzu z wieloma plikami to reguła decyduje, który jest dzielony.
+Akcja odrzuca ID spoza bieżącego elementu i ID pliku, który nie jest PDF-em.
+Komunikaty walidacyjne serwisu (np. „Strona 8 poza dokumentem (1-6)") trafiają
+do komunikatu błędu akcji.
 
 ### Słownik typów i źródło danych
 

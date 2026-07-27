@@ -6,13 +6,13 @@ namespace WebconPdfSplitterAction;
 public class RemovePagesActionConfig : SplitterConnectionConfig
 {
     [ConfigEditableText(
-        DisplayName = "Dozwolone kategorie zalacznikow",
-        Description = "Nazwy lub ID kategorii (grup) zalacznikow, na ktorych akcja moze dzialac. " +
-                      "Kilka rozdziel srednikiem. Akcja wymaga dokladnie jednego PDF w tych kategoriach.",
+        DisplayName = "ID zalacznika zrodlowego",
+        Description = "ID zalacznika PDF biezacego elementu, na ktorym akcja ma dzialac. " +
+                      "Zwykle regula biznesowa albo pole formularza zwracajace ID zalacznika.",
         IsRequired = true,
         TagEvaluationMode = EvaluationMode.Default,
         Order = 10)]
-    public string AllowedCategories { get; set; } = "";
+    public string SourceAttachmentId { get; set; } = "";
 
     [ConfigEditableText(
         DisplayName = "Zakres stron do usuniecia",
